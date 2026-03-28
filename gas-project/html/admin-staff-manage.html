@@ -1,0 +1,255 @@
+<div class="content">
+  <div class="flex-between mb-16">
+    <h2>スタッフ管理</h2>
+    <button class="btn btn-primary btn-sm" onclick="StaffManage.showAddModal()">+ 新規追加</button>
+  </div>
+
+  <!-- スタッフ一覧 -->
+  <div id="staff-manage-list">
+    <div class="text-center text-muted">読み込み中...</div>
+  </div>
+</div>
+
+<!-- スタッフ追加/編集モーダル -->
+<div id="staff-modal" class="modal-overlay" onclick="if(event.target===this)App.hideModal('staff-modal')">
+  <div class="modal-content">
+    <div class="modal-header">
+      <span class="modal-title" id="staff-modal-title">スタッフ追加</span>
+      <button class="modal-close" onclick="App.hideModal('staff-modal')">&#10005;</button>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">氏名 *</label>
+      <input type="text" id="sm-name" class="form-input" placeholder="山田太郎">
+    </div>
+    <div class="form-group">
+      <label class="form-label">フリガナ</label>
+      <input type="text" id="sm-kana" class="form-input" placeholder="ヤマダタロウ">
+    </div>
+    <div class="form-group">
+      <label class="form-label">雇用区分</label>
+      <select id="sm-employment-type" class="form-select">
+        <option value="アルバイト">アルバイト</option>
+        <option value="パート">パート</option>
+        <option value="正社員">正社員</option>
+      </select>
+    </div>
+    <div class="flex gap-8">
+      <div class="form-group" style="flex:1">
+        <label class="form-label">時給（円）</label>
+        <input type="number" id="sm-hourly-rate" class="form-input" placeholder="1000">
+      </div>
+      <div class="form-group" style="flex:1">
+        <label class="form-label">月給（円）</label>
+        <input type="number" id="sm-monthly-salary" class="form-input" placeholder="200000">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">交通費（日額・円）</label>
+      <input type="number" id="sm-transport" class="form-input" placeholder="500">
+    </div>
+    <div class="form-group">
+      <label class="form-label">電話番号</label>
+      <input type="tel" id="sm-phone" class="form-input" placeholder="090-1234-5678">
+    </div>
+    <div class="form-group">
+      <label class="form-label">メールアドレス</label>
+      <input type="email" id="sm-email" class="form-input" placeholder="example@mail.com">
+    </div>
+    <div class="form-group">
+      <label class="form-label">週の労働時間上限</label>
+      <input type="number" id="sm-weekly-limit" class="form-input" value="40">
+    </div>
+    <div class="form-group">
+      <label class="form-label">固定休み</label>
+      <input type="text" id="sm-fixed-off" class="form-input" placeholder="毎週火 等">
+    </div>
+    <div class="form-group">
+      <label class="form-label">メモ</label>
+      <textarea id="sm-memo" class="form-textarea" placeholder="学生、テスト期間あり 等"></textarea>
+    </div>
+
+    <input type="hidden" id="sm-editing-id" value="">
+
+    <button class="btn btn-primary btn-block mt-16" onclick="StaffManage.save()">保存する</button>
+  </div>
+</div>
+
+<script>
+var StaffManage = {
+  staffList: [],
+
+  init: function() {
+    this.load();
+  },
+
+  load: function() {
+    var self = this;
+    App.showLoading('スタッフ情報を読み込み中...');
+
+    API.getAllStaff().then(function(staff) {
+      App.hideLoading();
+      self.staffList = staff;
+      self.renderList();
+    }).catch(function(err) {
+      App.hideLoading();
+      App.showToast('読み込みに失敗しました', 'error');
+    });
+  },
+
+  renderList: function() {
+    var container = document.getElementById('staff-manage-list');
+
+    if (this.staffList.length === 0) {
+      container.innerHTML = '<div class="alert alert-info">スタッフが登録されていません。「+ 新規追加」ボタンから追加してください。</div>';
+      return;
+    }
+
+    var html = '<div class="table-wrapper"><table class="data-table">';
+    html += '<tr><th>氏名</th><th>区分</th><th>時給/月給</th><th>操作</th></tr>';
+
+    for (var i = 0; i < this.staffList.length; i++) {
+      var s = this.staffList[i];
+      var payInfo = s.employmentType === '正社員'
+        ? App.formatCurrency(s.monthlySalary) + '円/月'
+        : App.formatCurrency(s.hourlyRate) + '円/時';
+
+      html += '<tr>';
+      html += '<td class="text-bold">' + s.name + '</td>';
+      html += '<td><span class="badge badge-confirmed">' + s.employmentType + '</span></td>';
+      html += '<td>' + payInfo + '</td>';
+      html += '<td>';
+      html += '<button class="btn btn-outline btn-sm" onclick="StaffManage.edit(\'' + s.id + '\')" style="margin-right:4px">編集</button>';
+      html += '<button class="btn btn-danger btn-sm" onclick="StaffManage.retire(\'' + s.id + '\', \'' + s.name + '\')">退職</button>';
+      html += '</td>';
+      html += '</tr>';
+    }
+
+    html += '</table></div>';
+    container.innerHTML = html;
+  },
+
+  showAddModal: function() {
+    document.getElementById('staff-modal-title').textContent = 'スタッフ新規追加';
+    document.getElementById('sm-editing-id').value = '';
+    document.getElementById('sm-name').value = '';
+    document.getElementById('sm-kana').value = '';
+    document.getElementById('sm-employment-type').value = 'アルバイト';
+    document.getElementById('sm-hourly-rate').value = '';
+    document.getElementById('sm-monthly-salary').value = '';
+    document.getElementById('sm-transport').value = '';
+    document.getElementById('sm-phone').value = '';
+    document.getElementById('sm-email').value = '';
+    document.getElementById('sm-weekly-limit').value = '40';
+    document.getElementById('sm-fixed-off').value = '';
+    document.getElementById('sm-memo').value = '';
+    App.showModal('staff-modal');
+  },
+
+  edit: function(staffId) {
+    var staff = null;
+    for (var i = 0; i < this.staffList.length; i++) {
+      if (this.staffList[i].id === staffId) {
+        staff = this.staffList[i];
+        break;
+      }
+    }
+    if (!staff) return;
+
+    document.getElementById('staff-modal-title').textContent = staff.name + ' - 編集';
+    document.getElementById('sm-editing-id').value = staffId;
+    document.getElementById('sm-name').value = staff.name || '';
+    document.getElementById('sm-kana').value = staff.kana || '';
+    document.getElementById('sm-employment-type').value = staff.employmentType || 'アルバイト';
+    document.getElementById('sm-hourly-rate').value = staff.hourlyRate || '';
+    document.getElementById('sm-monthly-salary').value = staff.monthlySalary || '';
+    document.getElementById('sm-transport').value = staff.transportDaily || '';
+    document.getElementById('sm-phone').value = staff.phone || '';
+    document.getElementById('sm-email').value = staff.email || '';
+    document.getElementById('sm-weekly-limit').value = staff.weeklyLimit || 40;
+    document.getElementById('sm-fixed-off').value = staff.fixedOff || '';
+    document.getElementById('sm-memo').value = staff.memo || '';
+    App.showModal('staff-modal');
+  },
+
+  save: function() {
+    var name = document.getElementById('sm-name').value.trim();
+    if (!name) {
+      App.showToast('氏名を入力してください', 'error');
+      return;
+    }
+
+    var data = {
+      name: name,
+      kana: document.getElementById('sm-kana').value.trim(),
+      employmentType: document.getElementById('sm-employment-type').value,
+      hourlyRate: parseInt(document.getElementById('sm-hourly-rate').value) || 0,
+      monthlySalary: parseInt(document.getElementById('sm-monthly-salary').value) || 0,
+      transportDaily: parseInt(document.getElementById('sm-transport').value) || 0,
+      phone: document.getElementById('sm-phone').value.trim(),
+      email: document.getElementById('sm-email').value.trim(),
+      weeklyLimit: parseInt(document.getElementById('sm-weekly-limit').value) || 40,
+      fixedOff: document.getElementById('sm-fixed-off').value.trim(),
+      memo: document.getElementById('sm-memo').value.trim()
+    };
+
+    var editingId = document.getElementById('sm-editing-id').value;
+    var self = this;
+    App.showLoading('保存中...');
+
+    if (editingId) {
+      API.updateStaff(editingId, data).then(function(result) {
+        App.hideLoading();
+        App.hideModal('staff-modal');
+        if (result.success) {
+          App.showToast(result.message, 'success');
+          self.load();
+        } else {
+          App.showToast(result.message, 'error');
+        }
+      }).catch(function(err) {
+        App.hideLoading();
+        App.showToast('更新に失敗しました', 'error');
+      });
+    } else {
+      API.addStaff(data).then(function(result) {
+        App.hideLoading();
+        App.hideModal('staff-modal');
+        if (result.success) {
+          App.showToast(result.message, 'success');
+          self.load();
+        } else {
+          App.showToast(result.message, 'error');
+        }
+      }).catch(function(err) {
+        App.hideLoading();
+        App.showToast('登録に失敗しました', 'error');
+      });
+    }
+  },
+
+  retire: function(staffId, staffName) {
+    if (!App.confirm(staffName + 'さんを退職処理しますか？\n（データは残りますが、シフト入力やスタッフ選択画面に表示されなくなります）')) return;
+
+    App.showLoading('処理中...');
+    var self = this;
+
+    API.retireStaff(staffId).then(function(result) {
+      App.hideLoading();
+      if (result.success) {
+        App.showToast(result.message, 'success');
+        self.load();
+      } else {
+        App.showToast(result.message, 'error');
+      }
+    }).catch(function(err) {
+      App.hideLoading();
+      App.showToast('退職処理に失敗しました', 'error');
+    });
+  }
+};
+
+function onShow_admin_staff_manage() {
+  StaffManage.init();
+}
+</script>

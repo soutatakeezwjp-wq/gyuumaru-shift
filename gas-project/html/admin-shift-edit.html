@@ -1,0 +1,411 @@
+<div class="content wide">
+  <h2 class="mb-16">シフト表作成・編集</h2>
+
+  <!-- 操作バー -->
+  <div class="flex-between mb-16" style="flex-wrap:wrap;gap:8px">
+    <div id="ase-month-header"></div>
+    <div class="flex gap-8">
+      <button class="btn btn-secondary btn-sm" onclick="AdminShiftEdit.autoGenerate()">自動作成</button>
+      <button class="btn btn-success btn-sm" onclick="AdminShiftEdit.finalizeShift()">シフト確定</button>
+      <button class="btn btn-outline btn-sm" onclick="AdminShiftEdit.sendNotification()">LINE通知</button>
+    </div>
+  </div>
+
+  <!-- 警告表示 -->
+  <div id="ase-warnings"></div>
+
+  <!-- シフト表マトリクス -->
+  <div class="shift-matrix-wrapper">
+    <div id="ase-matrix">
+      <div class="text-center text-muted" style="padding:40px">シフトデータを読み込み中...</div>
+    </div>
+  </div>
+</div>
+
+<!-- シフト編集モーダル -->
+<div id="ase-edit-modal" class="modal-overlay" onclick="if(event.target===this)App.hideModal('ase-edit-modal')">
+  <div class="modal-content">
+    <div class="modal-header">
+      <span class="modal-title" id="ase-modal-title">シフト編集</span>
+      <button class="modal-close" onclick="App.hideModal('ase-edit-modal')">&#10005;</button>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">スタッフ</label>
+      <select id="ase-modal-staff" class="form-select"></select>
+    </div>
+
+    <div class="flex gap-8">
+      <div class="form-group" style="flex:1">
+        <label class="form-label">開始時間</label>
+        <select id="ase-modal-start" class="form-select"></select>
+      </div>
+      <div class="form-group" style="flex:1">
+        <label class="form-label">終了時間</label>
+        <select id="ase-modal-end" class="form-select"></select>
+      </div>
+    </div>
+
+    <div class="flex gap-8 mt-16">
+      <button class="btn btn-danger btn-sm" style="flex:1" id="ase-delete-btn" onclick="AdminShiftEdit.deleteEntry()">削除</button>
+      <button class="btn btn-primary" style="flex:2" onclick="AdminShiftEdit.saveEntry()">保存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+var AdminShiftEdit = {
+  yearMonth: '',
+  schedules: [],
+  staffList: [],
+  editingShiftId: null,
+  editingDate: '',
+
+  init: function() {
+    this.yearMonth = getNextMonthStr();
+    this.populateTimeSelects();
+
+    var self = this;
+    Calendar.renderHeader('ase-month-header', this.yearMonth, function(newYM) {
+      self.yearMonth = newYM;
+      self.load();
+    });
+    this.load();
+  },
+
+  populateTimeSelects: function() {
+    var wait = function() {
+      if (!App.timeSlots) { setTimeout(wait, 100); return; }
+      var selects = ['ase-modal-start', 'ase-modal-end'];
+      for (var s = 0; s < selects.length; s++) {
+        var el = document.getElementById(selects[s]);
+        if (!el) continue;
+        el.innerHTML = '';
+        for (var i = 0; i < App.timeSlots.length; i++) {
+          var opt = document.createElement('option');
+          opt.value = App.timeSlots[i];
+          opt.textContent = App.timeSlots[i];
+          el.appendChild(opt);
+        }
+      }
+    };
+    wait();
+  },
+
+  load: function() {
+    var self = this;
+    App.showLoading('シフトを読み込み中...');
+
+    Promise.all([
+      API.getShiftSchedule(this.yearMonth),
+      API.getStaffList()
+    ]).then(function(results) {
+      App.hideLoading();
+      self.schedules = results[0];
+      self.staffList = results[1];
+
+      Calendar.renderHeader('ase-month-header', self.yearMonth, function(newYM) {
+        self.yearMonth = newYM;
+        self.load();
+      });
+
+      self.renderMatrix();
+    }).catch(function(err) {
+      App.hideLoading();
+      App.showToast('読み込みに失敗しました', 'error');
+    });
+  },
+
+  renderMatrix: function() {
+    var container = document.getElementById('ase-matrix');
+    var parts = this.yearMonth.split('-');
+    var year = parseInt(parts[0]);
+    var month = parseInt(parts[1]);
+    var daysInMonth = new Date(year, month, 0).getDate();
+    var dayNames = ['日', '月', '火', '水', '木', '金', '土'];
+
+    // スケジュールをマップ化
+    var schedMap = {}; // { staffId: { date: shift } }
+    for (var i = 0; i < this.schedules.length; i++) {
+      var s = this.schedules[i];
+      if (!schedMap[s.staffId]) schedMap[s.staffId] = {};
+      schedMap[s.staffId][s.date] = s;
+    }
+
+    // 日付ごとの出勤人数
+    var dailyCount = {};
+    for (var dc = 1; dc <= daysInMonth; dc++) {
+      var dcDate = this.yearMonth + '-' + ('0' + dc).slice(-2);
+      dailyCount[dcDate] = 0;
+    }
+    for (var j = 0; j < this.schedules.length; j++) {
+      if (dailyCount[this.schedules[j].date] !== undefined) {
+        dailyCount[this.schedules[j].date]++;
+      }
+    }
+
+    var html = '<table class="shift-matrix">';
+
+    // ヘッダー行（日付）
+    html += '<tr><th class="staff-name-col">スタッフ</th>';
+    for (var d = 1; d <= daysInMonth; d++) {
+      var dow = new Date(year, month - 1, d).getDay();
+      var dayClass = dow === 0 ? ' style="color:#FFCDD2"' : (dow === 6 ? ' style="color:#90CAF9"' : '');
+      html += '<th' + dayClass + '>' + d + '<br><span style="font-size:9px">' + dayNames[dow] + '</span></th>';
+    }
+    html += '</tr>';
+
+    // スタッフ行
+    for (var si = 0; si < this.staffList.length; si++) {
+      var staff = this.staffList[si];
+      html += '<tr>';
+      html += '<td class="staff-name-col">' + staff.name + '</td>';
+
+      for (var day = 1; day <= daysInMonth; day++) {
+        var dateStr = this.yearMonth + '-' + ('0' + day).slice(-2);
+        var shift = (schedMap[staff.id] || {})[dateStr];
+
+        if (shift) {
+          html += '<td class="shift-cell has-shift" onclick="AdminShiftEdit.editShift(\'' + shift.id + '\', \'' + dateStr + '\', \'' + staff.id + '\')" title="' + staff.name + ' ' + shift.startTime + '-' + shift.endTime + '">';
+          html += shift.startTime + '<br>' + shift.endTime;
+          html += '</td>';
+        } else {
+          html += '<td class="shift-cell" onclick="AdminShiftEdit.addShift(\'' + dateStr + '\', \'' + staff.id + '\')">';
+          html += '</td>';
+        }
+      }
+      html += '</tr>';
+    }
+
+    // 合計行
+    var minStaff = (App.storeInfo ? Math.max(App.storeInfo.minStaffLunch, App.storeInfo.minStaffDinner) : 3);
+    html += '<tr class="summary-row"><td class="staff-name-col">出勤人数</td>';
+    for (var dd = 1; dd <= daysInMonth; dd++) {
+      var ddDate = this.yearMonth + '-' + ('0' + dd).slice(-2);
+      var count = dailyCount[ddDate] || 0;
+      var shortClass = count < minStaff ? ' shortage' : '';
+      html += '<td class="' + shortClass + '">' + count + '</td>';
+    }
+    html += '</tr>';
+
+    html += '</table>';
+    container.innerHTML = html;
+  },
+
+  // シフト編集モーダルを開く
+  editShift: function(shiftId, dateStr, staffId) {
+    this.editingShiftId = shiftId;
+    this.editingDate = dateStr;
+
+    // シフトデータを探す
+    var shift = null;
+    for (var i = 0; i < this.schedules.length; i++) {
+      if (this.schedules[i].id === shiftId) {
+        shift = this.schedules[i];
+        break;
+      }
+    }
+
+    var parts = dateStr.split('-');
+    var d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+    var dayNames = ['日', '月', '火', '水', '木', '金', '土'];
+    document.getElementById('ase-modal-title').textContent =
+      parseInt(parts[1]) + '/' + parseInt(parts[2]) + '（' + dayNames[d.getDay()] + '） シフト編集';
+
+    // スタッフ選択肢
+    this.populateStaffSelect(staffId);
+
+    if (shift) {
+      document.getElementById('ase-modal-start').value = shift.startTime;
+      document.getElementById('ase-modal-end').value = shift.endTime;
+    }
+
+    document.getElementById('ase-delete-btn').classList.remove('hidden');
+    App.showModal('ase-edit-modal');
+  },
+
+  // シフト追加モーダルを開く
+  addShift: function(dateStr, staffId) {
+    this.editingShiftId = null;
+    this.editingDate = dateStr;
+
+    var parts = dateStr.split('-');
+    var d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+    var dayNames = ['日', '月', '火', '水', '木', '金', '土'];
+    document.getElementById('ase-modal-title').textContent =
+      parseInt(parts[1]) + '/' + parseInt(parts[2]) + '（' + dayNames[d.getDay()] + '） シフト追加';
+
+    this.populateStaffSelect(staffId);
+    document.getElementById('ase-modal-start').value = '11:00';
+    document.getElementById('ase-modal-end').value = '17:00';
+    document.getElementById('ase-delete-btn').classList.add('hidden');
+    App.showModal('ase-edit-modal');
+  },
+
+  populateStaffSelect: function(selectedId) {
+    var el = document.getElementById('ase-modal-staff');
+    el.innerHTML = '';
+    for (var i = 0; i < this.staffList.length; i++) {
+      var opt = document.createElement('option');
+      opt.value = this.staffList[i].id;
+      opt.textContent = this.staffList[i].name;
+      el.appendChild(opt);
+    }
+    if (selectedId) el.value = selectedId;
+  },
+
+  // 保存
+  saveEntry: function() {
+    var staffId = document.getElementById('ase-modal-staff').value;
+    var startTime = document.getElementById('ase-modal-start').value;
+    var endTime = document.getElementById('ase-modal-end').value;
+
+    if (startTime >= endTime) {
+      App.showToast('終了時間は開始時間より後にしてください', 'error');
+      return;
+    }
+
+    App.showLoading('保存中...');
+    var self = this;
+
+    if (this.editingShiftId) {
+      API.updateShiftEntry(this.editingShiftId, {
+        startTime: startTime,
+        endTime: endTime
+      }).then(function(result) {
+        App.hideLoading();
+        App.hideModal('ase-edit-modal');
+        if (result.success) {
+          App.showToast('更新しました', 'success');
+          self.load();
+        } else {
+          App.showToast(result.message, 'error');
+        }
+      }).catch(function(err) {
+        App.hideLoading();
+        App.showToast('更新に失敗しました', 'error');
+      });
+    } else {
+      API.addShiftEntry({
+        staffId: staffId,
+        yearMonth: this.yearMonth,
+        date: this.editingDate,
+        startTime: startTime,
+        endTime: endTime
+      }).then(function(result) {
+        App.hideLoading();
+        App.hideModal('ase-edit-modal');
+        if (result.success) {
+          App.showToast('追加しました', 'success');
+          self.load();
+        } else {
+          App.showToast(result.message, 'error');
+        }
+      }).catch(function(err) {
+        App.hideLoading();
+        App.showToast('追加に失敗しました', 'error');
+      });
+    }
+  },
+
+  // 削除
+  deleteEntry: function() {
+    if (!this.editingShiftId) return;
+    if (!App.confirm('このシフトを削除しますか？')) return;
+
+    App.showLoading('削除中...');
+    var self = this;
+
+    API.deleteShiftEntry(this.editingShiftId).then(function(result) {
+      App.hideLoading();
+      App.hideModal('ase-edit-modal');
+      if (result.success) {
+        App.showToast('削除しました', 'success');
+        self.load();
+      } else {
+        App.showToast(result.message, 'error');
+      }
+    }).catch(function(err) {
+      App.hideLoading();
+      App.showToast('削除に失敗しました', 'error');
+    });
+  },
+
+  // 自動作成
+  autoGenerate: function() {
+    if (!App.confirm(this.yearMonth + 'のシフトを自動作成しますか？\n（既存のシフトは上書きされます）')) return;
+
+    App.showLoading('シフトを自動作成中...');
+    var self = this;
+
+    API.generateAutoShift(this.yearMonth).then(function(result) {
+      App.hideLoading();
+      if (result.success) {
+        App.showToast(result.message, 'success');
+
+        // 警告表示
+        var warnEl = document.getElementById('ase-warnings');
+        if (result.warnings && result.warnings.length > 0) {
+          var warnHtml = '';
+          for (var i = 0; i < result.warnings.length; i++) {
+            warnHtml += '<div class="alert alert-warning mb-8">' + result.warnings[i] + '</div>';
+          }
+          warnEl.innerHTML = warnHtml;
+        } else {
+          warnEl.innerHTML = '';
+        }
+
+        self.load();
+      } else {
+        App.showToast(result.message, 'error');
+      }
+    }).catch(function(err) {
+      App.hideLoading();
+      App.showToast('自動作成に失敗しました', 'error');
+    });
+  },
+
+  // シフト確定
+  finalizeShift: function() {
+    if (!App.confirm(this.yearMonth + 'のシフトを確定しますか？')) return;
+
+    App.showLoading('確定処理中...');
+    var self = this;
+
+    API.finalizeShift(this.yearMonth).then(function(result) {
+      App.hideLoading();
+      if (result.success) {
+        App.showToast(result.message, 'success');
+        self.load();
+      } else {
+        App.showToast(result.message, 'error');
+      }
+    }).catch(function(err) {
+      App.hideLoading();
+      App.showToast('確定処理に失敗しました', 'error');
+    });
+  },
+
+  // LINE通知送信
+  sendNotification: function() {
+    if (!App.confirm('シフト確定の通知をLINEに送信しますか？')) return;
+
+    App.showLoading('LINE通知を送信中...');
+    API.sendShiftConfirmNotification(this.yearMonth).then(function(result) {
+      App.hideLoading();
+      if (result.success) {
+        App.showToast('LINE通知を送信しました', 'success');
+      } else {
+        App.showToast(result.message, 'error');
+      }
+    }).catch(function(err) {
+      App.hideLoading();
+      App.showToast('通知の送信に失敗しました', 'error');
+    });
+  }
+};
+
+function onShow_admin_shift_edit() {
+  AdminShiftEdit.init();
+}
+</script>

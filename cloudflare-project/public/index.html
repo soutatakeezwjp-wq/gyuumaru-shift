@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>ぎゅう丸 シフト管理</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+  <!-- ヘッダー -->
+  <header class="app-header">
+    <button id="back-btn" class="back-btn hidden" onclick="App.goBack()">&#9664; 戻る</button>
+    <div class="header-center">
+      <img src="/img/logo.png" alt="ぎゅう丸" class="header-logo">
+      <div class="header-text">
+        <div class="logo">ぎゅう丸</div>
+        <div class="store-name" id="store-name">シフト管理</div>
+      </div>
+    </div>
+    <div style="width:60px"></div>
+  </header>
+
+  <!-- ========================================
+       店舗選択画面（トップ）
+       ======================================== -->
+  <div id="screen-store-select" class="screen hidden">
+    <div class="content">
+      <div class="top-logo-area">
+        <img src="/img/logo.png" alt="ぎゅう丸" class="top-logo">
+      </div>
+      <div class="greeting">シフト管理システム</div>
+      <div class="greeting-sub">店舗を選択してください</div>
+      <div id="store-list" class="store-select-grid">
+        <div class="text-center text-muted">読み込み中...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================
+       モード選択画面
+       ======================================== -->
+  <div id="screen-mode-select" class="screen hidden">
+    <div class="content">
+      <div class="top-logo-area">
+        <img src="/img/logo.png" alt="ぎゅう丸" class="top-logo-sm">
+      </div>
+      <div class="greeting" id="mode-select-store-name"></div>
+      <div class="greeting-sub">どちらのメニューを利用しますか？</div>
+      <div class="menu-grid">
+        <div class="card clickable menu-card" onclick="startStaffMode()">
+          <div class="card-icon">&#128100;</div>
+          <div class="card-title">スタッフ</div>
+          <div class="card-subtitle">シフト希望の提出・確認</div>
+        </div>
+        <div class="card clickable menu-card" onclick="startAdminMode()">
+          <div class="card-icon">&#128274;</div>
+          <div class="card-title">管理者</div>
+          <div class="card-subtitle">シフト作成・スタッフ管理</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================
+       スタッフ側画面
+       ======================================== -->
+
+  <!-- スタッフ選択画面 -->
+  <div id="screen-staff-select" class="screen hidden">
+    <div class="content">
+      <h2 class="mb-8">スタッフ選択</h2>
+      <p class="text-muted mb-16">自分の名前をタップしてください</p>
+      <div id="staff-list-container" class="staff-list">
+        <div class="text-center text-muted">読み込み中...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- スタッフメニュー画面 -->
+  <div id="screen-staff-menu" class="screen hidden">
+    <div class="content">
+      <div class="greeting" id="staff-greeting">こんにちは</div>
+      <div class="greeting-sub">何をしますか？</div>
+      <div class="menu-grid">
+        <div class="card clickable menu-card" onclick="App.showScreen('shift-request')">
+          <div class="card-icon">&#128197;</div>
+          <div class="card-title">シフト希望を出す</div>
+          <div class="card-subtitle">来月の希望を入力</div>
+        </div>
+        <div class="card clickable menu-card" onclick="App.showScreen('shift-request-view')">
+          <div class="card-icon">&#128203;</div>
+          <div class="card-title">提出済み希望を見る</div>
+          <div class="card-subtitle">入力した内容の確認</div>
+        </div>
+        <div class="card clickable menu-card" onclick="App.showScreen('shift-view')">
+          <div class="card-icon">&#9200;</div>
+          <div class="card-title">確定シフトを見る</div>
+          <div class="card-subtitle">決まったシフトの確認</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- シフト希望入力画面 -->
+  <div id="screen-shift-request" class="screen hidden">
+    <div class="content">
+      <h2 class="mb-8">シフト希望入力</h2>
+      <div id="sr-deadline-info" class="alert alert-info mb-16"></div>
+      <div id="sr-calendar-header"></div>
+      <div class="flex gap-8 mb-16">
+        <button class="btn btn-outline btn-sm" onclick="ShiftRequest.showBulkModal()">一括設定</button>
+        <button class="btn btn-outline btn-sm" onclick="ShiftRequest.clearAll()">全てクリア</button>
+      </div>
+      <div id="sr-calendar"></div>
+      <div class="flex gap-12 mt-16 mb-16" style="flex-wrap:wrap">
+        <div class="flex gap-8" style="align-items:center"><div style="width:16px;height:16px;background:#E8F5E9;border:1px solid #A5D6A7;border-radius:3px"></div><span class="text-sm">出勤希望</span></div>
+        <div class="flex gap-8" style="align-items:center"><div style="width:16px;height:16px;background:#FFEBEE;border:1px solid #EF9A9A;border-radius:3px"></div><span class="text-sm">休み希望</span></div>
+        <div class="flex gap-8" style="align-items:center"><div style="width:16px;height:16px;background:#FFF8E1;border:1px solid #FFE082;border-radius:3px"></div><span class="text-sm">どちらでも</span></div>
+      </div>
+      <button class="btn btn-primary btn-block btn-lg" onclick="ShiftRequest.submit()">シフト希望を提出する</button>
+    </div>
+    <!-- 日付入力モーダル -->
+    <div id="sr-day-modal" class="modal-overlay" onclick="if(event.target===this)App.hideModal('sr-day-modal')">
+      <div class="modal-content">
+        <div class="modal-header">
+          <span class="modal-title" id="sr-modal-date-label"></span>
+          <button class="modal-close" onclick="App.hideModal('sr-day-modal')">&#10005;</button>
+        </div>
+        <div class="form-group">
+          <label class="form-label">希望</label>
+          <div class="request-type-group">
+            <div class="request-type-btn" id="sr-type-work" onclick="ShiftRequest.selectType('出勤希望')">出勤希望</div>
+            <div class="request-type-btn" id="sr-type-off" onclick="ShiftRequest.selectType('休み希望')">休み希望</div>
+            <div class="request-type-btn" id="sr-type-either" onclick="ShiftRequest.selectType('どちらでも')">どちらでも</div>
+          </div>
+        </div>
+        <div id="sr-time-section">
+          <div class="flex gap-8">
+            <div class="form-group" style="flex:1"><label class="form-label">開始時間</label><select id="sr-start-time" class="form-select"></select></div>
+            <div class="form-group" style="flex:1"><label class="form-label">終了時間</label><select id="sr-end-time" class="form-select"></select></div>
+          </div>
+        </div>
+        <div class="form-group"><label class="form-label">備考（任意）</label><input type="text" id="sr-note" class="form-input" placeholder="テスト期間で早上がり希望 等"></div>
+        <div class="flex gap-8 mt-16">
+          <button class="btn btn-outline" style="flex:1" onclick="ShiftRequest.clearDay()">クリア</button>
+          <button class="btn btn-primary" style="flex:2" onclick="ShiftRequest.saveDay()">決定</button>
+        </div>
+      </div>
+    </div>
+    <!-- 一括設定モーダル -->
+    <div id="sr-bulk-modal" class="modal-overlay" onclick="if(event.target===this)App.hideModal('sr-bulk-modal')">
+      <div class="modal-content">
+        <div class="modal-header">
+          <span class="modal-title">一括設定</span>
+          <button class="modal-close" onclick="App.hideModal('sr-bulk-modal')">&#10005;</button>
+        </div>
+        <div class="form-group">
+          <label class="form-label">対象の曜日</label>
+          <div class="flex gap-8" style="flex-wrap:wrap">
+            <label><input type="checkbox" id="sr-bulk-sun" value="0"> 日</label>
+            <label><input type="checkbox" id="sr-bulk-mon" value="1"> 月</label>
+            <label><input type="checkbox" id="sr-bulk-tue" value="2"> 火</label>
+            <label><input type="checkbox" id="sr-bulk-wed" value="3"> 水</label>
+            <label><input type="checkbox" id="sr-bulk-thu" value="4"> 木</label>
+            <label><input type="checkbox" id="sr-bulk-fri" value="5"> 金</label>
+            <label><input type="checkbox" id="sr-bulk-sat" value="6"> 土</label>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">希望</label>
+          <select id="sr-bulk-type" class="form-select" onchange="ShiftRequest.toggleBulkTime()">
+            <option value="出勤希望">出勤希望</option>
+            <option value="休み希望">休み希望</option>
+            <option value="どちらでも">どちらでも</option>
+          </select>
+        </div>
+        <div id="sr-bulk-time-section">
+          <div class="flex gap-8">
+            <div class="form-group" style="flex:1"><label class="form-label">開始時間</label><select id="sr-bulk-start" class="form-select"></select></div>
+            <div class="form-group" style="flex:1"><label class="form-label">終了時間</label><select id="sr-bulk-end" class="form-select"></select></div>
+          </div>
+        </div>
+        <button class="btn btn-primary btn-block mt-16" onclick="ShiftRequest.applyBulk()">一括設定する</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 提出済み希望確認画面 -->
+  <div id="screen-shift-request-view" class="screen hidden">
+    <div class="content">
+      <h2 class="mb-16">提出済みの希望</h2>
+      <div id="request-view-header"></div>
+      <div id="request-view-calendar"></div>
+      <div id="request-view-message" class="mt-16"></div>
+    </div>
+  </div>
+
+  <!-- 確定シフト確認画面 -->
+  <div id="screen-shift-view" class="screen hidden">
+    <div class="content">
+      <h2 class="mb-16">確定シフト</h2>
+      <div id="sv-calendar-header"></div>
+      <div id="sv-summary" class="card mb-16 hidden">
+        <div class="flex-between"><span class="text-bold">今月の勤務</span><span id="sv-total-hours" class="text-lg text-bold text-accent">0.0時間</span></div>
+        <div class="flex-between mt-8"><span class="text-muted text-sm">出勤日数</span><span id="sv-total-days" class="text-bold">0日</span></div>
+      </div>
+      <div id="sv-calendar"></div>
+      <div class="mt-16"><button class="btn btn-outline btn-sm btn-block" onclick="ShiftView.toggleList()"><span id="sv-list-toggle-text">リスト表示に切り替え</span></button></div>
+      <div id="sv-list" class="mt-16 hidden">
+        <div class="table-wrapper"><table class="data-table"><thead><tr><th>日付</th><th>曜日</th><th>開始</th><th>終了</th><th>実働</th></tr></thead><tbody id="sv-list-body"></tbody></table></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================
+       管理者側画面
+       ======================================== -->
+
+  <!-- 管理者ログイン画面 -->
+  <div id="screen-admin-login" class="screen hidden">
+    <div class="content">
+      <div class="password-form">
+        <div class="lock-icon">&#128274;</div>
+        <h2 class="mb-16">管理者ログイン</h2>
+        <div class="form-group">
+          <input type="password" id="admin-password" class="form-input" placeholder="パスワードを入力" onkeydown="if(event.key==='Enter')adminLogin()">
+        </div>
+        <button class="btn btn-primary btn-block" onclick="adminLogin()">ログイン</button>
+        <div id="admin-login-error" class="alert alert-error mt-16 hidden"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 管理者ダッシュボード -->
+  <div id="screen-admin-dashboard" class="screen hidden">
+    <div class="content">
+      <div class="greeting">管理者メニュー</div>
+      <div class="greeting-sub" id="admin-store-name"></div>
+      <div class="card" id="admin-summary-card">
+        <div class="card-title">シフト希望の提出状況</div>
+        <div id="admin-summary-content" class="text-muted">読み込み中...</div>
+      </div>
+      <div class="menu-grid">
+        <div class="card clickable menu-card" onclick="App.showScreen('admin-shift-requests')"><div class="card-icon">&#128203;</div><div class="card-title">シフト希望一覧</div><div class="card-subtitle">提出された希望を確認</div></div>
+        <div class="card clickable menu-card" onclick="App.showScreen('admin-shift-edit')"><div class="card-icon">&#128197;</div><div class="card-title">シフト表作成</div><div class="card-subtitle">自動作成と編集</div></div>
+        <div class="card clickable menu-card" onclick="App.showScreen('admin-labor-cost')"><div class="card-icon">&#128176;</div><div class="card-title">人件費確認</div><div class="card-subtitle">人件費の計算と確認</div></div>
+        <div class="card clickable menu-card" onclick="App.showScreen('admin-staff-manage')"><div class="card-icon">&#128101;</div><div class="card-title">スタッフ管理</div><div class="card-subtitle">追加・編集・退職処理</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- シフト希望一覧 -->
+  <div id="screen-admin-shift-requests" class="screen hidden">
+    <div class="content wide">
+      <h2 class="mb-16">シフト希望一覧</h2>
+      <div class="flex-between mb-16"><div id="request-list-header"></div></div>
+      <div id="request-list-calendar"></div>
+      <div id="request-list-table" class="mt-16"></div>
+    </div>
+  </div>
+
+  <!-- シフト表作成・編集 -->
+  <div id="screen-admin-shift-edit" class="screen hidden">
+    <div class="content wide">
+      <h2 class="mb-16">シフト表作成・編集</h2>
+      <div class="flex-between mb-16" style="flex-wrap:wrap;gap:8px">
+        <div id="ase-month-header"></div>
+        <div class="flex gap-8">
+          <button class="btn btn-secondary btn-sm" onclick="AdminShiftEdit.autoGenerate()">自動作成</button>
+          <button class="btn btn-success btn-sm" onclick="AdminShiftEdit.finalizeShift()">シフト確定</button>
+          <button class="btn btn-outline btn-sm" onclick="AdminShiftEdit.sendNotification()">LINE通知</button>
+        </div>
+      </div>
+      <div id="ase-warnings"></div>
+      <div class="shift-matrix-wrapper"><div id="ase-matrix"><div class="text-center text-muted" style="padding:40px">シフトデータを読み込み中...</div></div></div>
+      <div id="ase-staff-hours" class="mt-16"></div>
+    </div>
+    <!-- シフト編集モーダル -->
+    <div id="ase-edit-modal" class="modal-overlay" onclick="if(event.target===this)App.hideModal('ase-edit-modal')">
+      <div class="modal-content">
+        <div class="modal-header"><span class="modal-title" id="ase-modal-title">シフト編集</span><button class="modal-close" onclick="App.hideModal('ase-edit-modal')">&#10005;</button></div>
+        <div class="form-group"><label class="form-label">スタッフ</label><select id="ase-modal-staff" class="form-select"></select></div>
+        <div class="flex gap-8">
+          <div class="form-group" style="flex:1"><label class="form-label">開始時間</label><select id="ase-modal-start" class="form-select"></select></div>
+          <div class="form-group" style="flex:1"><label class="form-label">終了時間</label><select id="ase-modal-end" class="form-select"></select></div>
+        </div>
+        <div class="flex gap-8 mt-16">
+          <button class="btn btn-danger btn-sm" style="flex:1" id="ase-delete-btn" onclick="AdminShiftEdit.deleteEntry()">削除</button>
+          <button class="btn btn-primary" style="flex:2" onclick="AdminShiftEdit.saveEntry()">保存</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- スタッフ管理 -->
+  <div id="screen-admin-staff-manage" class="screen hidden">
+    <div class="content">
+      <div class="flex-between mb-16"><h2>スタッフ管理</h2><button class="btn btn-primary btn-sm" onclick="StaffManage.showAddModal()">+ 新規追加</button></div>
+      <div id="staff-manage-list"><div class="text-center text-muted">読み込み中...</div></div>
+    </div>
+    <!-- スタッフモーダル -->
+    <div id="staff-modal" class="modal-overlay" onclick="if(event.target===this)App.hideModal('staff-modal')">
+      <div class="modal-content">
+        <div class="modal-header"><span class="modal-title" id="staff-modal-title">スタッフ追加</span><button class="modal-close" onclick="App.hideModal('staff-modal')">&#10005;</button></div>
+        <div class="form-group"><label class="form-label">氏名 *</label><input type="text" id="sm-name" class="form-input" placeholder="山田太郎"></div>
+        <div class="form-group"><label class="form-label">フリガナ</label><input type="text" id="sm-kana" class="form-input" placeholder="ヤマダタロウ"></div>
+        <div class="form-group"><label class="form-label">雇用区分</label><select id="sm-employment-type" class="form-select"><option value="アルバイト">アルバイト</option><option value="パート">パート</option><option value="正社員">正社員</option></select></div>
+        <div class="form-group"><label class="form-label">ポジション</label><select id="sm-position" class="form-select"><option value="ホール">ホール</option><option value="キッチン">キッチン</option></select></div>
+        <div class="flex gap-8">
+          <div class="form-group" style="flex:1"><label class="form-label">時給（円）</label><input type="number" id="sm-hourly-rate" class="form-input" placeholder="1000"></div>
+          <div class="form-group" style="flex:1"><label class="form-label">月給（円）</label><input type="number" id="sm-monthly-salary" class="form-input" placeholder="200000"></div>
+        </div>
+        <div class="form-group"><label class="form-label">交通費（日額・円）</label><input type="number" id="sm-transport" class="form-input" placeholder="500"></div>
+        <div class="form-group"><label class="form-label">電話番号</label><input type="tel" id="sm-phone" class="form-input" placeholder="090-1234-5678"></div>
+        <div class="form-group"><label class="form-label">メールアドレス</label><input type="email" id="sm-email" class="form-input" placeholder="example@mail.com"></div>
+        <div class="form-group"><label class="form-label">週の労働時間上限</label><input type="number" id="sm-weekly-limit" class="form-input" value="40"></div>
+        <div class="form-group"><label class="form-label">固定休み</label><input type="text" id="sm-fixed-off" class="form-input" placeholder="毎週火 等"></div>
+        <div class="form-group"><label class="form-label">メモ</label><textarea id="sm-memo" class="form-textarea" placeholder="学生、テスト期間あり 等"></textarea></div>
+        <input type="hidden" id="sm-editing-id" value="">
+        <button class="btn btn-primary btn-block mt-16" onclick="StaffManage.save()">保存する</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 人件費確認 -->
+  <div id="screen-admin-labor-cost" class="screen hidden">
+    <div class="content">
+      <h2 class="mb-16">人件費確認</h2>
+      <div class="flex-between mb-16"><div id="alc-month-header"></div><button class="btn btn-primary btn-sm" onclick="LaborCost.calculate()">計算実行</button></div>
+      <div id="alc-summary" class="card mb-16 hidden">
+        <div class="flex-between"><span class="text-bold">合計人件費</span><span id="alc-total-cost" class="text-lg text-bold text-accent">0円</span></div>
+        <div class="flex-between mt-8"><span class="text-muted text-sm">対象スタッフ数</span><span id="alc-staff-count" class="text-bold">0人</span></div>
+      </div>
+      <div id="alc-table"></div>
+    </div>
+  </div>
+
+  <!-- ========================================
+       共通パーツ
+       ======================================== -->
+  <div id="loading-overlay" class="loading-overlay">
+    <div class="spinner"></div>
+    <div class="loading-text" id="loading-text">読み込み中...</div>
+  </div>
+  <div id="toast" class="toast"></div>
+
+  <!-- JavaScript -->
+  <script src="/js/api-client.js"></script>
+  <script src="/js/app.js"></script>
+  <script src="/js/calendar.js"></script>
+  <script src="/js/pages.js"></script>
+
+  <script>
+    // アプリ初期化
+    App.init('');
+  </script>
+
+</body>
+</html>

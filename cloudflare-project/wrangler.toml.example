@@ -1,0 +1,17 @@
+# このファイルを wrangler.toml にコピーして、自分の情報を入れてください
+# cp wrangler.toml.example wrangler.toml
+
+name = "gyuumaru-shift"
+main = "src/index.ts"
+compatibility_date = "2025-03-01"
+
+[assets]
+directory = "./public"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "gyuumaru-db"
+database_id = "ここにD1データベースIDを入れる"
+
+[vars]
+JWT_SECRET = "ここに秘密の文字列を入れる（ランダムな長い文字列を推奨）"

@@ -1,0 +1,171 @@
+<div class="content">
+  <h2 class="mb-16">確定シフト</h2>
+
+  <!-- カレンダーヘッダー -->
+  <div id="sv-calendar-header"></div>
+
+  <!-- サマリー -->
+  <div id="sv-summary" class="card mb-16 hidden">
+    <div class="flex-between">
+      <span class="text-bold">今月の勤務</span>
+      <span id="sv-total-hours" class="text-lg text-bold text-accent">0.0時間</span>
+    </div>
+    <div class="flex-between mt-8">
+      <span class="text-muted text-sm">出勤日数</span>
+      <span id="sv-total-days" class="text-bold">0日</span>
+    </div>
+  </div>
+
+  <!-- カレンダー -->
+  <div id="sv-calendar"></div>
+
+  <!-- リスト表示切替 -->
+  <div class="mt-16">
+    <button class="btn btn-outline btn-sm btn-block" onclick="ShiftView.toggleList()">
+      <span id="sv-list-toggle-text">リスト表示に切り替え</span>
+    </button>
+  </div>
+
+  <!-- リスト表示 -->
+  <div id="sv-list" class="mt-16 hidden">
+    <div class="table-wrapper">
+      <table class="data-table" id="sv-list-table">
+        <thead>
+          <tr>
+            <th>日付</th>
+            <th>曜日</th>
+            <th>開始</th>
+            <th>終了</th>
+            <th>実働</th>
+          </tr>
+        </thead>
+        <tbody id="sv-list-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+var ShiftView = {
+  yearMonth: '',
+  shifts: [],
+  listVisible: false,
+
+  init: function() {
+    this.yearMonth = getCurrentMonthStr();
+    this.listVisible = false;
+    document.getElementById('sv-list').classList.add('hidden');
+    document.getElementById('sv-list-toggle-text').textContent = 'リスト表示に切り替え';
+
+    var self = this;
+    Calendar.renderHeader('sv-calendar-header', this.yearMonth, function(newYM) {
+      self.yearMonth = newYM;
+      self.load();
+    });
+    this.load();
+  },
+
+  load: function() {
+    var self = this;
+    App.showLoading('シフトを読み込み中...');
+
+    API.getMyShift(App.currentStaff.id, this.yearMonth).then(function(shifts) {
+      App.hideLoading();
+      self.shifts = shifts;
+
+      Calendar.renderHeader('sv-calendar-header', self.yearMonth, function(newYM) {
+        self.yearMonth = newYM;
+        self.load();
+      });
+
+      self.renderCalendar();
+      self.renderSummary();
+      self.renderList();
+    }).catch(function(err) {
+      App.hideLoading();
+      App.showToast('読み込みに失敗しました', 'error');
+    });
+  },
+
+  renderCalendar: function() {
+    var data = {};
+    for (var i = 0; i < this.shifts.length; i++) {
+      var s = this.shifts[i];
+      data[s.date] = {
+        confirmed: true,
+        startTime: s.startTime,
+        endTime: s.endTime
+      };
+    }
+    Calendar.render('sv-calendar', this.yearMonth, {
+      data: data,
+      renderCell: function(dateStr, dayData) {
+        if (!dayData) return '';
+        return '<div class="shift-info">' + dayData.startTime + '<br>' + dayData.endTime + '</div>';
+      }
+    });
+  },
+
+  renderSummary: function() {
+    var summaryEl = document.getElementById('sv-summary');
+    if (this.shifts.length === 0) {
+      summaryEl.classList.add('hidden');
+      return;
+    }
+
+    summaryEl.classList.remove('hidden');
+    var totalHours = 0;
+    for (var i = 0; i < this.shifts.length; i++) {
+      totalHours += this.shifts[i].workHours || 0;
+    }
+    document.getElementById('sv-total-hours').textContent = App.formatHours(totalHours) + '時間';
+    document.getElementById('sv-total-days').textContent = this.shifts.length + '日';
+  },
+
+  renderList: function() {
+    var tbody = document.getElementById('sv-list-body');
+    if (this.shifts.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">この月の確定シフトはありません</td></tr>';
+      return;
+    }
+
+    var dayNames = ['日', '月', '火', '水', '木', '金', '土'];
+    var sorted = this.shifts.slice().sort(function(a, b) { return a.date.localeCompare(b.date); });
+    var html = '';
+
+    for (var i = 0; i < sorted.length; i++) {
+      var s = sorted[i];
+      var parts = s.date.split('-');
+      var d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+      var dayName = dayNames[d.getDay()];
+      var dayClass = d.getDay() === 0 ? ' class="text-accent"' : (d.getDay() === 6 ? ' style="color:#1976D2"' : '');
+
+      html += '<tr>';
+      html += '<td>' + parseInt(parts[1]) + '/' + parseInt(parts[2]) + '</td>';
+      html += '<td' + dayClass + '>' + dayName + '</td>';
+      html += '<td>' + s.startTime + '</td>';
+      html += '<td>' + s.endTime + '</td>';
+      html += '<td>' + App.formatHours(s.workHours) + 'h</td>';
+      html += '</tr>';
+    }
+    tbody.innerHTML = html;
+  },
+
+  toggleList: function() {
+    this.listVisible = !this.listVisible;
+    var listEl = document.getElementById('sv-list');
+    var toggleText = document.getElementById('sv-list-toggle-text');
+    if (this.listVisible) {
+      listEl.classList.remove('hidden');
+      toggleText.textContent = 'カレンダー表示に戻す';
+    } else {
+      listEl.classList.add('hidden');
+      toggleText.textContent = 'リスト表示に切り替え';
+    }
+  }
+};
+
+function onShow_shift_view() {
+  ShiftView.init();
+}
+</script>

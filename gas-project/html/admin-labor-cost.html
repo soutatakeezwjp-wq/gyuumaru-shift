@@ -1,0 +1,146 @@
+<div class="content">
+  <h2 class="mb-16">人件費確認</h2>
+
+  <!-- 月選択 -->
+  <div class="flex-between mb-16">
+    <div id="alc-month-header"></div>
+    <button class="btn btn-primary btn-sm" onclick="LaborCost.calculate()">計算実行</button>
+  </div>
+
+  <!-- サマリーカード -->
+  <div id="alc-summary" class="card mb-16 hidden">
+    <div class="flex-between">
+      <span class="text-bold">合計人件費</span>
+      <span id="alc-total-cost" class="text-lg text-bold text-accent">0円</span>
+    </div>
+    <div class="flex-between mt-8">
+      <span class="text-muted text-sm">対象スタッフ数</span>
+      <span id="alc-staff-count" class="text-bold">0人</span>
+    </div>
+  </div>
+
+  <!-- 詳細テーブル -->
+  <div id="alc-table"></div>
+</div>
+
+<script>
+var LaborCost = {
+  yearMonth: '',
+
+  init: function() {
+    this.yearMonth = getCurrentMonthStr();
+
+    var self = this;
+    Calendar.renderHeader('alc-month-header', this.yearMonth, function(newYM) {
+      self.yearMonth = newYM;
+      self.loadExisting();
+    });
+    this.loadExisting();
+  },
+
+  loadExisting: function() {
+    var self = this;
+    App.showLoading('読み込み中...');
+
+    Calendar.renderHeader('alc-month-header', this.yearMonth, function(newYM) {
+      self.yearMonth = newYM;
+      self.loadExisting();
+    });
+
+    API.getLaborCostReport(this.yearMonth).then(function(report) {
+      App.hideLoading();
+      if (report.staffCosts.length > 0) {
+        self.renderReport(report);
+      } else {
+        document.getElementById('alc-summary').classList.add('hidden');
+        document.getElementById('alc-table').innerHTML =
+          '<div class="alert alert-info">この月の人件費データはまだありません。「計算実行」ボタンで計算してください。</div>';
+      }
+    }).catch(function(err) {
+      App.hideLoading();
+      App.showToast('読み込みに失敗しました', 'error');
+    });
+  },
+
+  calculate: function() {
+    App.showLoading('人件費を計算中...');
+    var self = this;
+
+    API.calculateLaborCost(this.yearMonth).then(function(result) {
+      App.hideLoading();
+      if (result.success) {
+        App.showToast(result.message, 'success');
+        self.renderReport(result);
+      } else {
+        App.showToast(result.message, 'error');
+      }
+    }).catch(function(err) {
+      App.hideLoading();
+      App.showToast('計算に失敗しました', 'error');
+    });
+  },
+
+  renderReport: function(report) {
+    // サマリー
+    var summaryEl = document.getElementById('alc-summary');
+    summaryEl.classList.remove('hidden');
+    document.getElementById('alc-total-cost').textContent = App.formatCurrency(report.totalCost) + '円';
+    document.getElementById('alc-staff-count').textContent = report.staffCosts.length + '人';
+
+    // テーブル
+    var html = '<div class="table-wrapper"><table class="data-table">';
+    html += '<tr>';
+    html += '<th>スタッフ</th>';
+    html += '<th>区分</th>';
+    html += '<th>労働時間</th>';
+    html += '<th>基本給</th>';
+    html += '<th>深夜手当</th>';
+    html += '<th>残業手当</th>';
+    html += '<th>交通費</th>';
+    html += '<th>合計</th>';
+    html += '</tr>';
+
+    var costs = report.staffCosts;
+    for (var i = 0; i < costs.length; i++) {
+      var c = costs[i];
+      html += '<tr>';
+      html += '<td class="text-bold">' + c.name + '</td>';
+      html += '<td>' + c.employmentType + '</td>';
+      html += '<td class="text-right">' + App.formatHours(c.totalHours) + 'h</td>';
+      html += '<td class="text-right">' + App.formatCurrency(c.basePay) + '</td>';
+      html += '<td class="text-right">' + App.formatCurrency(c.lateNightPay) + '</td>';
+      html += '<td class="text-right">' + App.formatCurrency(c.overtimePay) + '</td>';
+      html += '<td class="text-right">' + App.formatCurrency(c.transportTotal) + '</td>';
+      html += '<td class="text-right text-bold">' + App.formatCurrency(c.totalCost) + '</td>';
+      html += '</tr>';
+    }
+
+    // 合計行
+    html += '<tr style="background-color:#F0E8DC;font-weight:bold">';
+    html += '<td colspan="2">合計</td>';
+    var totalHours = 0;
+    var totalBase = 0, totalLate = 0, totalOT = 0, totalTrans = 0;
+    for (var j = 0; j < costs.length; j++) {
+      totalHours += costs[j].totalHours || 0;
+      totalBase += costs[j].basePay || 0;
+      totalLate += costs[j].lateNightPay || 0;
+      totalOT += costs[j].overtimePay || 0;
+      totalTrans += costs[j].transportTotal || 0;
+    }
+    html += '<td class="text-right">' + App.formatHours(totalHours) + 'h</td>';
+    html += '<td class="text-right">' + App.formatCurrency(totalBase) + '</td>';
+    html += '<td class="text-right">' + App.formatCurrency(totalLate) + '</td>';
+    html += '<td class="text-right">' + App.formatCurrency(totalOT) + '</td>';
+    html += '<td class="text-right">' + App.formatCurrency(totalTrans) + '</td>';
+    html += '<td class="text-right text-accent">' + App.formatCurrency(report.totalCost) + '</td>';
+    html += '</tr>';
+
+    html += '</table></div>';
+    document.getElementById('alc-table').innerHTML = html;
+  }
+};
+
+function onShow_admin_labor_cost() {
+  LaborCost.init();
+}
+</script>

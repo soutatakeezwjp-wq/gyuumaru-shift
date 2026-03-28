@@ -1,0 +1,449 @@
+<div class="content">
+  <h2 class="mb-8">シフト希望入力</h2>
+  <div id="sr-deadline-info" class="alert alert-info mb-16"></div>
+
+  <!-- カレンダーヘッダー -->
+  <div id="sr-calendar-header"></div>
+
+  <!-- 一括設定ボタン -->
+  <div class="flex gap-8 mb-16">
+    <button class="btn btn-outline btn-sm" onclick="ShiftRequest.showBulkModal()">一括設定</button>
+    <button class="btn btn-outline btn-sm" onclick="ShiftRequest.clearAll()">全てクリア</button>
+  </div>
+
+  <!-- カレンダー -->
+  <div id="sr-calendar"></div>
+
+  <!-- 凡例 -->
+  <div class="flex gap-12 mt-16 mb-16" style="flex-wrap:wrap">
+    <div class="flex gap-8" style="align-items:center">
+      <div style="width:16px;height:16px;background:#E8F5E9;border:1px solid #A5D6A7;border-radius:3px"></div>
+      <span class="text-sm">出勤希望</span>
+    </div>
+    <div class="flex gap-8" style="align-items:center">
+      <div style="width:16px;height:16px;background:#FFEBEE;border:1px solid #EF9A9A;border-radius:3px"></div>
+      <span class="text-sm">休み希望</span>
+    </div>
+    <div class="flex gap-8" style="align-items:center">
+      <div style="width:16px;height:16px;background:#FFF8E1;border:1px solid #FFE082;border-radius:3px"></div>
+      <span class="text-sm">どちらでも</span>
+    </div>
+  </div>
+
+  <!-- 提出ボタン -->
+  <button class="btn btn-primary btn-block btn-lg" onclick="ShiftRequest.submit()">
+    シフト希望を提出する
+  </button>
+</div>
+
+<!-- 日付入力モーダル -->
+<div id="sr-day-modal" class="modal-overlay" onclick="if(event.target===this)App.hideModal('sr-day-modal')">
+  <div class="modal-content">
+    <div class="modal-header">
+      <span class="modal-title" id="sr-modal-date-label">4月1日（火）</span>
+      <button class="modal-close" onclick="App.hideModal('sr-day-modal')">&#10005;</button>
+    </div>
+
+    <!-- 希望区分 -->
+    <div class="form-group">
+      <label class="form-label">希望</label>
+      <div class="request-type-group">
+        <div class="request-type-btn" id="sr-type-work" onclick="ShiftRequest.selectType('出勤希望')">出勤希望</div>
+        <div class="request-type-btn" id="sr-type-off" onclick="ShiftRequest.selectType('休み希望')">休み希望</div>
+        <div class="request-type-btn" id="sr-type-either" onclick="ShiftRequest.selectType('どちらでも')">どちらでも</div>
+      </div>
+    </div>
+
+    <!-- 時間選択（出勤希望・どちらでもの時のみ表示） -->
+    <div id="sr-time-section">
+      <div class="flex gap-8">
+        <div class="form-group" style="flex:1">
+          <label class="form-label">開始時間</label>
+          <select id="sr-start-time" class="form-select"></select>
+        </div>
+        <div class="form-group" style="flex:1">
+          <label class="form-label">終了時間</label>
+          <select id="sr-end-time" class="form-select"></select>
+        </div>
+      </div>
+    </div>
+
+    <!-- 備考 -->
+    <div class="form-group">
+      <label class="form-label">備考（任意）</label>
+      <input type="text" id="sr-note" class="form-input" placeholder="テスト期間で早上がり希望 等">
+    </div>
+
+    <!-- ボタン -->
+    <div class="flex gap-8 mt-16">
+      <button class="btn btn-outline" style="flex:1" onclick="ShiftRequest.clearDay()">クリア</button>
+      <button class="btn btn-primary" style="flex:2" onclick="ShiftRequest.saveDay()">決定</button>
+    </div>
+  </div>
+</div>
+
+<!-- 一括設定モーダル -->
+<div id="sr-bulk-modal" class="modal-overlay" onclick="if(event.target===this)App.hideModal('sr-bulk-modal')">
+  <div class="modal-content">
+    <div class="modal-header">
+      <span class="modal-title">一括設定</span>
+      <button class="modal-close" onclick="App.hideModal('sr-bulk-modal')">&#10005;</button>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">対象の曜日</label>
+      <div class="flex gap-8" style="flex-wrap:wrap">
+        <label><input type="checkbox" id="sr-bulk-sun" value="0"> 日</label>
+        <label><input type="checkbox" id="sr-bulk-mon" value="1"> 月</label>
+        <label><input type="checkbox" id="sr-bulk-tue" value="2"> 火</label>
+        <label><input type="checkbox" id="sr-bulk-wed" value="3"> 水</label>
+        <label><input type="checkbox" id="sr-bulk-thu" value="4"> 木</label>
+        <label><input type="checkbox" id="sr-bulk-fri" value="5"> 金</label>
+        <label><input type="checkbox" id="sr-bulk-sat" value="6"> 土</label>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">希望</label>
+      <select id="sr-bulk-type" class="form-select" onchange="ShiftRequest.toggleBulkTime()">
+        <option value="出勤希望">出勤希望</option>
+        <option value="休み希望">休み希望</option>
+        <option value="どちらでも">どちらでも</option>
+      </select>
+    </div>
+
+    <div id="sr-bulk-time-section">
+      <div class="flex gap-8">
+        <div class="form-group" style="flex:1">
+          <label class="form-label">開始時間</label>
+          <select id="sr-bulk-start" class="form-select"></select>
+        </div>
+        <div class="form-group" style="flex:1">
+          <label class="form-label">終了時間</label>
+          <select id="sr-bulk-end" class="form-select"></select>
+        </div>
+      </div>
+    </div>
+
+    <button class="btn btn-primary btn-block mt-16" onclick="ShiftRequest.applyBulk()">一括設定する</button>
+  </div>
+</div>
+
+<script>
+var ShiftRequest = {
+  yearMonth: '',
+  data: {},       // { 'YYYY-MM-DD': { type, startTime, endTime, note } }
+  editingDate: '',
+  selectedType: '',
+
+  // 初期化（画面表示時に呼ばれる）
+  init: function() {
+    this.yearMonth = getNextMonthStr();
+    this.data = {};
+    this.selectedType = '';
+
+    // 時間選択肢を設定
+    this.populateTimeSelects();
+
+    // 締切情報を表示
+    this.updateDeadlineInfo();
+
+    // カレンダーヘッダー描画
+    var self = this;
+    Calendar.renderHeader('sr-calendar-header', this.yearMonth, function(newYM) {
+      self.yearMonth = newYM;
+      self.loadExisting();
+    });
+
+    // 既存データを読み込んでカレンダー描画
+    this.loadExisting();
+  },
+
+  // 既存の希望を読み込む
+  loadExisting: function() {
+    var self = this;
+    App.showLoading('読み込み中...');
+
+    API.getMyRequests(App.currentStaff.id, this.yearMonth).then(function(requests) {
+      App.hideLoading();
+      self.data = {};
+      for (var i = 0; i < requests.length; i++) {
+        var r = requests[i];
+        self.data[r.date] = {
+          type: r.type,
+          startTime: r.startTime,
+          endTime: r.endTime,
+          note: r.note
+        };
+      }
+      self.renderCalendar();
+      self.updateDeadlineInfo();
+
+      Calendar.renderHeader('sr-calendar-header', self.yearMonth, function(newYM) {
+        self.yearMonth = newYM;
+        self.loadExisting();
+      });
+    }).catch(function(err) {
+      App.hideLoading();
+      App.showToast('読み込みに失敗しました', 'error');
+      self.renderCalendar();
+    });
+  },
+
+  // カレンダー描画
+  renderCalendar: function() {
+    var self = this;
+    Calendar.render('sr-calendar', this.yearMonth, {
+      data: this.data,
+      onCellClick: function(dateStr) {
+        self.openDayModal(dateStr);
+      }
+    });
+  },
+
+  // 時間選択肢を設定
+  populateTimeSelects: function() {
+    var wait = function() {
+      if (!App.timeSlots) {
+        setTimeout(wait, 100);
+        return;
+      }
+      var selects = ['sr-start-time', 'sr-end-time', 'sr-bulk-start', 'sr-bulk-end'];
+      for (var s = 0; s < selects.length; s++) {
+        var el = document.getElementById(selects[s]);
+        if (!el) continue;
+        el.innerHTML = '';
+        for (var i = 0; i < App.timeSlots.length; i++) {
+          var opt = document.createElement('option');
+          opt.value = App.timeSlots[i];
+          opt.textContent = App.timeSlots[i];
+          el.appendChild(opt);
+        }
+        // デフォルト値
+        if (selects[s].indexOf('start') >= 0) el.value = '11:00';
+        if (selects[s].indexOf('end') >= 0) el.value = '17:00';
+      }
+    };
+    wait();
+  },
+
+  // 締切情報を更新
+  updateDeadlineInfo: function() {
+    var el = document.getElementById('sr-deadline-info');
+    if (!el || !App.storeInfo) return;
+    var parts = this.yearMonth.split('-');
+    var month = parseInt(parts[1]);
+    var prevMonth = month - 1 || 12;
+    el.textContent = month + '月のシフト希望は、' + prevMonth + '月' + App.storeInfo.requestDeadlineDay + '日までに提出してください';
+  },
+
+  // 日付モーダルを開く
+  openDayModal: function(dateStr) {
+    this.editingDate = dateStr;
+    var parts = dateStr.split('-');
+    var d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+    var dayNames = ['日', '月', '火', '水', '木', '金', '土'];
+    document.getElementById('sr-modal-date-label').textContent =
+      parseInt(parts[1]) + '月' + parseInt(parts[2]) + '日（' + dayNames[d.getDay()] + '）';
+
+    // 既存データを読み込み
+    var existing = this.data[dateStr];
+    if (existing) {
+      this.selectType(existing.type);
+      if (existing.startTime) document.getElementById('sr-start-time').value = existing.startTime;
+      if (existing.endTime) document.getElementById('sr-end-time').value = existing.endTime;
+      document.getElementById('sr-note').value = existing.note || '';
+    } else {
+      this.selectType('');
+      document.getElementById('sr-start-time').value = '11:00';
+      document.getElementById('sr-end-time').value = '17:00';
+      document.getElementById('sr-note').value = '';
+    }
+
+    App.showModal('sr-day-modal');
+  },
+
+  // 希望区分を選択
+  selectType: function(type) {
+    this.selectedType = type;
+    var workBtn = document.getElementById('sr-type-work');
+    var offBtn = document.getElementById('sr-type-off');
+    var eitherBtn = document.getElementById('sr-type-either');
+    var timeSection = document.getElementById('sr-time-section');
+
+    workBtn.className = 'request-type-btn';
+    offBtn.className = 'request-type-btn';
+    eitherBtn.className = 'request-type-btn';
+
+    if (type === '出勤希望') {
+      workBtn.className = 'request-type-btn selected-work';
+      timeSection.style.display = 'block';
+    } else if (type === '休み希望') {
+      offBtn.className = 'request-type-btn selected-off';
+      timeSection.style.display = 'none';
+    } else if (type === 'どちらでも') {
+      eitherBtn.className = 'request-type-btn selected-either';
+      timeSection.style.display = 'block';
+    } else {
+      timeSection.style.display = 'block';
+    }
+  },
+
+  // 日付の希望を保存
+  saveDay: function() {
+    if (!this.selectedType) {
+      App.showToast('希望の種類を選んでください', 'error');
+      return;
+    }
+
+    var entry = {
+      type: this.selectedType,
+      startTime: '',
+      endTime: '',
+      note: document.getElementById('sr-note').value
+    };
+
+    if (this.selectedType !== '休み希望') {
+      entry.startTime = document.getElementById('sr-start-time').value;
+      entry.endTime = document.getElementById('sr-end-time').value;
+
+      if (entry.startTime >= entry.endTime) {
+        App.showToast('終了時間は開始時間より後にしてください', 'error');
+        return;
+      }
+    }
+
+    this.data[this.editingDate] = entry;
+    App.hideModal('sr-day-modal');
+    this.renderCalendar();
+    App.showToast('保存しました', 'success');
+  },
+
+  // 日付の希望をクリア
+  clearDay: function() {
+    delete this.data[this.editingDate];
+    App.hideModal('sr-day-modal');
+    this.renderCalendar();
+  },
+
+  // 全データをクリア
+  clearAll: function() {
+    if (!App.confirm('全ての希望をクリアしますか？')) return;
+    this.data = {};
+    this.renderCalendar();
+    App.showToast('全てクリアしました');
+  },
+
+  // 一括設定モーダルを表示
+  showBulkModal: function() {
+    // チェックボックスをリセット
+    var days = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+    for (var i = 0; i < days.length; i++) {
+      document.getElementById('sr-bulk-' + days[i]).checked = false;
+    }
+    document.getElementById('sr-bulk-type').value = '出勤希望';
+    this.toggleBulkTime();
+    App.showModal('sr-bulk-modal');
+  },
+
+  toggleBulkTime: function() {
+    var type = document.getElementById('sr-bulk-type').value;
+    document.getElementById('sr-bulk-time-section').style.display =
+      type === '休み希望' ? 'none' : 'block';
+  },
+
+  // 一括設定を適用
+  applyBulk: function() {
+    var days = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+    var selectedDays = [];
+    for (var i = 0; i < days.length; i++) {
+      if (document.getElementById('sr-bulk-' + days[i]).checked) {
+        selectedDays.push(i);
+      }
+    }
+
+    if (selectedDays.length === 0) {
+      App.showToast('曜日を選択してください', 'error');
+      return;
+    }
+
+    var type = document.getElementById('sr-bulk-type').value;
+    var startTime = document.getElementById('sr-bulk-start').value;
+    var endTime = document.getElementById('sr-bulk-end').value;
+
+    // 対象年月の全日付をチェック
+    var parts = this.yearMonth.split('-');
+    var year = parseInt(parts[0]);
+    var month = parseInt(parts[1]);
+    var daysInMonth = new Date(year, month, 0).getDate();
+    var count = 0;
+
+    for (var d = 1; d <= daysInMonth; d++) {
+      var date = new Date(year, month - 1, d);
+      if (selectedDays.indexOf(date.getDay()) >= 0) {
+        var dateStr = this.yearMonth + '-' + ('0' + d).slice(-2);
+        this.data[dateStr] = {
+          type: type,
+          startTime: type !== '休み希望' ? startTime : '',
+          endTime: type !== '休み希望' ? endTime : '',
+          note: ''
+        };
+        count++;
+      }
+    }
+
+    App.hideModal('sr-bulk-modal');
+    this.renderCalendar();
+    App.showToast(count + '日分を設定しました', 'success');
+  },
+
+  // シフト希望を提出
+  submit: function() {
+    var dates = Object.keys(this.data);
+    if (dates.length === 0) {
+      App.showToast('1日以上の希望を入力してください', 'error');
+      return;
+    }
+
+    if (!App.confirm(dates.length + '日分のシフト希望を提出しますか？')) return;
+
+    var requests = [];
+    for (var i = 0; i < dates.length; i++) {
+      var d = this.data[dates[i]];
+      requests.push({
+        date: dates[i],
+        type: d.type,
+        startTime: d.startTime || '',
+        endTime: d.endTime || '',
+        note: d.note || ''
+      });
+    }
+
+    App.showLoading('提出中...');
+    var self = this;
+
+    API.submitShiftRequests(App.currentStaff.id, this.yearMonth, requests)
+      .then(function(result) {
+        App.hideLoading();
+        if (result.success) {
+          App.showToast(result.message, 'success');
+          // メニューに戻る
+          setTimeout(function() {
+            App.showScreen('staff-menu');
+          }, 1500);
+        } else {
+          App.showToast(result.message, 'error');
+        }
+      })
+      .catch(function(err) {
+        App.hideLoading();
+        App.showToast('提出に失敗しました', 'error');
+      });
+  }
+};
+
+// 画面表示時の初期化
+function onShow_shift_request() {
+  ShiftRequest.init();
+}
+</script>

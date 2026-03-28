@@ -1,0 +1,203 @@
+<script>
+/**
+ * ぎゅう丸シフト管理システム - メインアプリケーションJS
+ *
+ * 画面切替、共通UI操作、ローディング制御などを管理する。
+ */
+var App = {
+  // 現在のモード（'staff' or 'admin'）
+  mode: '',
+  // 現在選択中のスタッフ
+  currentStaff: null,
+  // 店舗情報
+  storeInfo: null,
+  // 時間選択肢のキャッシュ
+  timeSlots: null,
+  // 現在表示中の画面
+  currentScreen: '',
+
+  /**
+   * アプリを初期化する
+   * @param {string} mode - 'staff' or 'admin'
+   */
+  init: function(mode) {
+    this.mode = mode;
+    this.loadStoreInfo();
+
+    if (mode === 'admin') {
+      this.showScreen('admin-login');
+    } else {
+      this.showScreen('staff-select');
+    }
+  },
+
+  /**
+   * 店舗情報を読み込む
+   */
+  loadStoreInfo: function() {
+    var self = this;
+    API.getCurrentStoreInfo().then(function(info) {
+      self.storeInfo = info;
+      var storeNameEl = document.getElementById('store-name');
+      if (storeNameEl) {
+        storeNameEl.textContent = info.storeName;
+      }
+    }).catch(function(err) {
+      console.error('店舗情報の取得に失敗:', err);
+    });
+
+    // 時間選択肢も事前に取得
+    API.getTimeSlots().then(function(slots) {
+      self.timeSlots = slots;
+    });
+  },
+
+  /**
+   * 画面を切り替える
+   * @param {string} screenId - 画面のID
+   * @param {Object} params - 画面に渡すパラメータ
+   */
+  showScreen: function(screenId, params) {
+    // 全画面を非表示
+    var screens = document.querySelectorAll('.screen');
+    for (var i = 0; i < screens.length; i++) {
+      screens[i].classList.add('hidden');
+    }
+
+    // 対象画面を表示
+    var target = document.getElementById('screen-' + screenId);
+    if (target) {
+      target.classList.remove('hidden');
+      this.currentScreen = screenId;
+
+      // 戻るボタンの表示制御
+      var backBtn = document.getElementById('back-btn');
+      if (backBtn) {
+        if (screenId === 'staff-select' || screenId === 'admin-login') {
+          backBtn.classList.add('hidden');
+        } else {
+          backBtn.classList.remove('hidden');
+        }
+      }
+
+      // 画面固有の初期化を呼び出す
+      if (typeof window['onShow_' + screenId.replace(/-/g, '_')] === 'function') {
+        window['onShow_' + screenId.replace(/-/g, '_')](params);
+      }
+    }
+
+    // スクロールを先頭に戻す
+    window.scrollTo(0, 0);
+  },
+
+  /**
+   * 戻るボタンの処理
+   */
+  goBack: function() {
+    if (this.mode === 'staff') {
+      switch (this.currentScreen) {
+        case 'staff-menu':
+          this.currentStaff = null;
+          this.showScreen('staff-select');
+          break;
+        case 'shift-request':
+        case 'shift-request-view':
+        case 'shift-view':
+          this.showScreen('staff-menu');
+          break;
+        default:
+          this.showScreen('staff-select');
+      }
+    } else {
+      switch (this.currentScreen) {
+        case 'admin-dashboard':
+          this.showScreen('admin-login');
+          break;
+        case 'admin-shift-requests':
+        case 'admin-shift-edit':
+        case 'admin-staff-manage':
+        case 'admin-labor-cost':
+          this.showScreen('admin-dashboard');
+          break;
+        default:
+          this.showScreen('admin-dashboard');
+      }
+    }
+  },
+
+  /**
+   * スタッフを選択する
+   * @param {string} staffId - スタッフID
+   * @param {string} staffName - スタッフ名
+   */
+  selectStaff: function(staffId, staffName) {
+    this.currentStaff = { id: staffId, name: staffName };
+    this.showScreen('staff-menu');
+  },
+
+  // ========================================
+  // ローディング制御
+  // ========================================
+  showLoading: function(message) {
+    var overlay = document.getElementById('loading-overlay');
+    var text = document.getElementById('loading-text');
+    if (text) text.textContent = message || '読み込み中...';
+    if (overlay) overlay.classList.add('active');
+  },
+
+  hideLoading: function() {
+    var overlay = document.getElementById('loading-overlay');
+    if (overlay) overlay.classList.remove('active');
+  },
+
+  // ========================================
+  // トースト通知
+  // ========================================
+  showToast: function(message, type) {
+    var toast = document.getElementById('toast');
+    if (!toast) return;
+
+    toast.textContent = message;
+    toast.className = 'toast';
+    if (type) toast.classList.add('toast-' + type);
+    toast.classList.add('show');
+
+    setTimeout(function() {
+      toast.classList.remove('show');
+    }, 3000);
+  },
+
+  // ========================================
+  // モーダル制御
+  // ========================================
+  showModal: function(modalId) {
+    var modal = document.getElementById(modalId);
+    if (modal) modal.classList.add('active');
+  },
+
+  hideModal: function(modalId) {
+    var modal = document.getElementById(modalId);
+    if (modal) modal.classList.remove('active');
+  },
+
+  // ========================================
+  // 確認ダイアログ
+  // ========================================
+  confirm: function(message) {
+    return window.confirm(message);
+  },
+
+  // ========================================
+  // 数値フォーマット
+  // ========================================
+  formatCurrency: function(num) {
+    if (num === null || num === undefined) return '0';
+    return Math.round(num).toLocaleString();
+  },
+
+  formatHours: function(hours) {
+    if (!hours) return '0.0';
+    return (Math.round(hours * 10) / 10).toFixed(1);
+  }
+};
+</script>

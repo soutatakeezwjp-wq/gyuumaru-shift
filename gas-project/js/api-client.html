@@ -1,0 +1,150 @@
+<script>
+/**
+ * ぎゅう丸シフト管理システム - API クライアント
+ *
+ * google.script.run のラッパー。
+ * サーバー側の関数をPromiseで呼び出せるようにする。
+ */
+var API = {
+  /**
+   * サーバー側の関数を呼び出す（汎用）
+   * @param {string} functionName - GAS側の関数名
+   * @param {...*} args - 引数
+   * @return {Promise} 結果のPromise
+   */
+  call: function(functionName) {
+    var args = Array.prototype.slice.call(arguments, 1);
+    return new Promise(function(resolve, reject) {
+      var runner = google.script.run
+        .withSuccessHandler(resolve)
+        .withFailureHandler(function(error) {
+          console.error('API Error [' + functionName + ']:', error);
+          reject(error);
+        });
+      runner[functionName].apply(runner, args);
+    });
+  },
+
+  // ========================================
+  // 認証・店舗情報
+  // ========================================
+  getStaffList: function() {
+    return this.call('getStaffList');
+  },
+
+  verifyAdminPassword: function(password) {
+    return this.call('verifyAdminPassword', password);
+  },
+
+  getCurrentStoreInfo: function() {
+    return this.call('getCurrentStoreInfo');
+  },
+
+  getTimeSlots: function() {
+    return this.call('getTimeSlots');
+  },
+
+  isRequestPeriodOpen: function(yearMonth) {
+    return this.call('isRequestPeriodOpen', yearMonth);
+  },
+
+  // ========================================
+  // シフト希望
+  // ========================================
+  submitShiftRequests: function(staffId, yearMonth, requests) {
+    return this.call('submitShiftRequests', staffId, yearMonth, requests);
+  },
+
+  getMyRequests: function(staffId, yearMonth) {
+    return this.call('getMyRequests', staffId, yearMonth);
+  },
+
+  getAllRequests: function(yearMonth) {
+    return this.call('getAllRequests', yearMonth);
+  },
+
+  getRequestSummary: function(yearMonth) {
+    return this.call('getRequestSummary', yearMonth);
+  },
+
+  // ========================================
+  // 確定シフト
+  // ========================================
+  generateAutoShift: function(yearMonth) {
+    return this.call('generateAutoShift', yearMonth);
+  },
+
+  getShiftSchedule: function(yearMonth) {
+    return this.call('getShiftSchedule', yearMonth);
+  },
+
+  getMyShift: function(staffId, yearMonth) {
+    return this.call('getMyShift', staffId, yearMonth);
+  },
+
+  updateShiftEntry: function(shiftId, data) {
+    return this.call('updateShiftEntry', shiftId, data);
+  },
+
+  addShiftEntry: function(data) {
+    return this.call('addShiftEntry', data);
+  },
+
+  deleteShiftEntry: function(shiftId) {
+    return this.call('deleteShiftEntry', shiftId);
+  },
+
+  finalizeShift: function(yearMonth) {
+    return this.call('finalizeShift', yearMonth);
+  },
+
+  // ========================================
+  // スタッフ管理
+  // ========================================
+  getAllStaff: function() {
+    return this.call('getAllStaff');
+  },
+
+  getStaffById: function(staffId) {
+    return this.call('getStaffById', staffId);
+  },
+
+  addStaff: function(staffData) {
+    return this.call('addStaff', staffData);
+  },
+
+  updateStaff: function(staffId, staffData) {
+    return this.call('updateStaff', staffId, staffData);
+  },
+
+  retireStaff: function(staffId) {
+    return this.call('retireStaff', staffId);
+  },
+
+  // ========================================
+  // 人件費
+  // ========================================
+  calculateLaborCost: function(yearMonth) {
+    return this.call('calculateLaborCost', yearMonth);
+  },
+
+  getLaborCostReport: function(yearMonth) {
+    return this.call('getLaborCostReport', yearMonth);
+  },
+
+  // ========================================
+  // LINE通知
+  // ========================================
+  sendShiftConfirmNotification: function(yearMonth) {
+    return this.call('sendShiftConfirmNotification', yearMonth);
+  },
+
+  sendReminderNotification: function(yearMonth) {
+    return this.call('sendReminderNotification', yearMonth);
+  },
+
+  testLineNotification: function() {
+    return this.call('testLineNotification');
+  }
+};
+</script>

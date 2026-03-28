@@ -1,0 +1,22 @@
+{
+  "name": "gyuumaru-shift",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:init": "wrangler d1 execute gyuumaru-db --local --file=schema.sql",
+    "db:seed": "wrangler d1 execute gyuumaru-db --local --file=seed.sql",
+    "db:init:remote": "wrangler d1 execute gyuumaru-db --remote --file=schema.sql",
+    "db:seed:remote": "wrangler d1 execute gyuumaru-db --remote --file=seed.sql",
+    "db:reset": "wrangler d1 execute gyuumaru-db --local --command='DROP TABLE IF EXISTS logs; DROP TABLE IF EXISTS labor_costs; DROP TABLE IF EXISTS shift_schedules; DROP TABLE IF EXISTS shift_requests; DROP TABLE IF EXISTS staff; DROP TABLE IF EXISTS store_settings; DROP TABLE IF EXISTS stores;' && npm run db:init && npm run db:seed"
+  },
+  "dependencies": {
+    "hono": "^4.7.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250321.0",
+    "typescript": "^5.8.0",
+    "wrangler": "^4.10.0"
+  }
+}

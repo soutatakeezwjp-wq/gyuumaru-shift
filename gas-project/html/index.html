@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <base target="_top">
+  <?!= include('css/style') ?>
+</head>
+<body>
+
+  <!-- ヘッダー -->
+  <header class="app-header">
+    <button id="back-btn" class="back-btn hidden" onclick="App.goBack()">&#9664; 戻る</button>
+    <div>
+      <div class="logo">ぎゅう丸</div>
+      <div class="store-name" id="store-name">読み込み中...</div>
+    </div>
+    <div style="width:60px"></div>
+  </header>
+
+  <!-- ========================================
+       スタッフ側画面
+       ======================================== -->
+
+  <? if (mode === 'staff') { ?>
+
+  <!-- スタッフ選択画面 -->
+  <div id="screen-staff-select" class="screen">
+    <?!= include('html/staff-select') ?>
+  </div>
+
+  <!-- スタッフメニュー画面 -->
+  <div id="screen-staff-menu" class="screen hidden">
+    <div class="content">
+      <div class="greeting" id="staff-greeting">こんにちは</div>
+      <div class="greeting-sub">何をしますか？</div>
+      <div class="menu-grid">
+        <div class="card clickable menu-card" onclick="App.showScreen('shift-request')">
+          <div class="card-icon">&#128197;</div>
+          <div class="card-title">シフト希望を出す</div>
+          <div class="card-subtitle">来月の希望を入力</div>
+        </div>
+        <div class="card clickable menu-card" onclick="App.showScreen('shift-request-view')">
+          <div class="card-icon">&#128203;</div>
+          <div class="card-title">提出済み希望を見る</div>
+          <div class="card-subtitle">入力した内容の確認</div>
+        </div>
+        <div class="card clickable menu-card" onclick="App.showScreen('shift-view')">
+          <div class="card-icon">&#9200;</div>
+          <div class="card-title">確定シフトを見る</div>
+          <div class="card-subtitle">決まったシフトの確認</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- シフト希望入力画面 -->
+  <div id="screen-shift-request" class="screen hidden">
+    <?!= include('html/shift-request') ?>
+  </div>
+
+  <!-- 提出済み希望確認画面 -->
+  <div id="screen-shift-request-view" class="screen hidden">
+    <div class="content">
+      <h2 class="mb-16">提出済みの希望</h2>
+      <div id="request-view-header"></div>
+      <div id="request-view-calendar"></div>
+      <div id="request-view-message" class="mt-16"></div>
+    </div>
+  </div>
+
+  <!-- 確定シフト確認画面 -->
+  <div id="screen-shift-view" class="screen hidden">
+    <?!= include('html/shift-view') ?>
+  </div>
+
+  <? } ?>
+
+  <!-- ========================================
+       管理者側画面
+       ======================================== -->
+
+  <? if (mode === 'admin') { ?>
+
+  <!-- 管理者ログイン画面 -->
+  <div id="screen-admin-login" class="screen">
+    <div class="content">
+      <div class="password-form">
+        <div class="lock-icon">&#128274;</div>
+        <h2 class="mb-16">管理者ログイン</h2>
+        <div class="form-group">
+          <input type="password" id="admin-password" class="form-input" placeholder="パスワードを入力" onkeydown="if(event.key==='Enter')adminLogin()">
+        </div>
+        <button class="btn btn-primary btn-block" onclick="adminLogin()">ログイン</button>
+        <div id="admin-login-error" class="alert alert-error mt-16 hidden"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 管理者ダッシュボード -->
+  <div id="screen-admin-dashboard" class="screen hidden">
+    <?!= include('html/admin-dashboard') ?>
+  </div>
+
+  <!-- シフト希望一覧 -->
+  <div id="screen-admin-shift-requests" class="screen hidden">
+    <div class="content wide">
+      <h2 class="mb-16">シフト希望一覧</h2>
+      <div class="flex-between mb-16">
+        <div id="request-list-header"></div>
+      </div>
+      <div id="request-list-calendar"></div>
+      <div id="request-list-table" class="mt-16"></div>
+    </div>
+  </div>
+
+  <!-- シフト表作成・編集 -->
+  <div id="screen-admin-shift-edit" class="screen hidden">
+    <?!= include('html/admin-shift-edit') ?>
+  </div>
+
+  <!-- スタッフ管理 -->
+  <div id="screen-admin-staff-manage" class="screen hidden">
+    <?!= include('html/admin-staff-manage') ?>
+  </div>
+
+  <!-- 人件費確認 -->
+  <div id="screen-admin-labor-cost" class="screen hidden">
+    <?!= include('html/admin-labor-cost') ?>
+  </div>
+
+  <? } ?>
+
+  <!-- ========================================
+       共通パーツ
+       ======================================== -->
+
+  <!-- ローディングオーバーレイ -->
+  <div id="loading-overlay" class="loading-overlay">
+    <div class="spinner"></div>
+    <div class="loading-text" id="loading-text">読み込み中...</div>
+  </div>
+
+  <!-- トースト通知 -->
+  <div id="toast" class="toast"></div>
+
+  <!-- JavaScript -->
+  <?!= include('js/api-client') ?>
+  <?!= include('js/app') ?>
+  <?!= include('js/calendar') ?>
+
+  <script>
+    // アプリ初期化
+    App.init('<?= mode ?>');
+
+    // 管理者ログイン処理
+    function adminLogin() {
+      var password = document.getElementById('admin-password').value;
+      var errorEl = document.getElementById('admin-login-error');
+
+      if (!password) {
+        errorEl.textContent = 'パスワードを入力してください';
+        errorEl.classList.remove('hidden');
+        return;
+      }
+
+      App.showLoading('認証中...');
+      API.verifyAdminPassword(password).then(function(result) {
+        App.hideLoading();
+        if (result) {
+          errorEl.classList.add('hidden');
+          App.showScreen('admin-dashboard');
+        } else {
+          errorEl.textContent = 'パスワードが正しくありません';
+          errorEl.classList.remove('hidden');
+        }
+      }).catch(function(err) {
+        App.hideLoading();
+        errorEl.textContent = 'エラーが発生しました: ' + err.message;
+        errorEl.classList.remove('hidden');
+      });
+    }
+
+    // スタッフメニュー表示時
+    function onShow_staff_menu() {
+      if (App.currentStaff) {
+        document.getElementById('staff-greeting').textContent =
+          'こんにちは、' + App.currentStaff.name + 'さん';
+      }
+    }
+
+    // 提出済み希望確認画面
+    function onShow_shift_request_view() {
+      if (!App.currentStaff) return;
+
+      var yearMonth = getNextMonthStr();
+      App.showLoading('希望を読み込み中...');
+
+      Calendar.renderHeader('request-view-header', yearMonth, function(newYM) {
+        yearMonth = newYM;
+        loadRequestView(newYM);
+      });
+
+      loadRequestView(yearMonth);
+    }
+
+    function loadRequestView(yearMonth) {
+      API.getMyRequests(App.currentStaff.id, yearMonth).then(function(requests) {
+        App.hideLoading();
+        var data = {};
+        for (var i = 0; i < requests.length; i++) {
+          var r = requests[i];
+          data[r.date] = r;
+        }
+        Calendar.render('request-view-calendar', yearMonth, { data: data });
+
+        var msgEl = document.getElementById('request-view-message');
+        if (requests.length === 0) {
+          msgEl.innerHTML = '<div class="alert alert-info">この月の希望はまだ提出されていません。</div>';
+        } else {
+          msgEl.innerHTML = '<div class="alert alert-success">' + requests.length + '日分の希望が提出済みです。</div>';
+        }
+      }).catch(function(err) {
+        App.hideLoading();
+        App.showToast('読み込みに失敗しました', 'error');
+      });
+    }
+
+    // 管理者シフト希望一覧
+    function onShow_admin_shift_requests(params) {
+      var yearMonth = (params && params.yearMonth) || getNextMonthStr();
+      App.showLoading('希望を読み込み中...');
+
+      Calendar.renderHeader('request-list-header', yearMonth, function(newYM) {
+        yearMonth = newYM;
+        loadRequestList(newYM);
+      });
+      loadRequestList(yearMonth);
+    }
+
+    function loadRequestList(yearMonth) {
+      Promise.all([
+        API.getAllRequests(yearMonth),
+        API.getStaffList()
+      ]).then(function(results) {
+        App.hideLoading();
+        var requests = results[0];
+        var staffList = results[1];
+
+        // スタッフ名マップ
+        var staffMap = {};
+        for (var i = 0; i < staffList.length; i++) {
+          staffMap[staffList[i].id] = staffList[i].name;
+        }
+
+        // テーブル表示
+        var tableHtml = '<div class="table-wrapper"><table class="data-table">';
+        tableHtml += '<tr><th>スタッフ</th><th>日付</th><th>区分</th><th>時間</th><th>備考</th></tr>';
+
+        if (requests.length === 0) {
+          tableHtml += '<tr><td colspan="5" class="text-center text-muted">希望はまだ提出されていません</td></tr>';
+        } else {
+          // 日付順にソート
+          requests.sort(function(a, b) { return a.date.localeCompare(b.date); });
+          for (var j = 0; j < requests.length; j++) {
+            var r = requests[j];
+            var name = staffMap[r.staffId] || r.staffId;
+            var timeStr = r.startTime && r.endTime ? r.startTime + '-' + r.endTime : '-';
+            tableHtml += '<tr>';
+            tableHtml += '<td>' + name + '</td>';
+            tableHtml += '<td>' + r.date + '</td>';
+            tableHtml += '<td>' + r.type + '</td>';
+            tableHtml += '<td>' + timeStr + '</td>';
+            tableHtml += '<td>' + (r.note || '') + '</td>';
+            tableHtml += '</tr>';
+          }
+        }
+        tableHtml += '</table></div>';
+        document.getElementById('request-list-table').innerHTML = tableHtml;
+      }).catch(function(err) {
+        App.hideLoading();
+        App.showToast('読み込みに失敗しました', 'error');
+      });
+    }
+
+    // ヘルパー：来月の年月を取得
+    function getNextMonthStr() {
+      var d = new Date();
+      d.setMonth(d.getMonth() + 1);
+      var y = d.getFullYear();
+      var m = ('0' + (d.getMonth() + 1)).slice(-2);
+      return y + '-' + m;
+    }
+
+    // ヘルパー：今月の年月を取得
+    function getCurrentMonthStr() {
+      var d = new Date();
+      var y = d.getFullYear();
+      var m = ('0' + (d.getMonth() + 1)).slice(-2);
+      return y + '-' + m;
+    }
+  </script>
+
+</body>
+</html>

@@ -1,0 +1,33 @@
+<div class="content">
+  <h2 class="mb-8">スタッフ選択</h2>
+  <p class="text-muted mb-16">自分の名前をタップしてください</p>
+
+  <div id="staff-list-container" class="staff-list">
+    <div class="text-center text-muted">読み込み中...</div>
+  </div>
+</div>
+
+<script>
+(function() {
+  // 画面表示時にスタッフ一覧を読み込む
+  API.getStaffList().then(function(staffList) {
+    var container = document.getElementById('staff-list-container');
+    if (staffList.length === 0) {
+      container.innerHTML = '<div class="alert alert-warning">スタッフが登録されていません。管理者に連絡してください。</div>';
+      return;
+    }
+
+    var html = '';
+    for (var i = 0; i < staffList.length; i++) {
+      var s = staffList[i];
+      html += '<div class="staff-item" onclick="App.selectStaff(\'' + s.id + '\', \'' + s.name + '\')">';
+      html += s.name;
+      html += '</div>';
+    }
+    container.innerHTML = html;
+  }).catch(function(err) {
+    document.getElementById('staff-list-container').innerHTML =
+      '<div class="alert alert-error">スタッフ情報の読み込みに失敗しました。ページを再読み込みしてください。</div>';
+  });
+})();
+</script>

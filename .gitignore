@@ -1,0 +1,20 @@
+# Node.js の依存パッケージ（容量が大きいのでアップロード不要）
+node_modules/
+
+# Cloudflare Workers のビルドキャッシュ
+cloudflare-project/.wrangler/
+
+# 機密情報を含むファイル
+cloudflare-project/wrangler.toml
+gas-project/.clasp.json
+
+# macOS のシステムファイル
+.DS_Store
+
+# 環境変数ファイル
+.env
+.env.local
+.env.production
+
+# Claude Code のローカル設定
+.claude/settings.local.json
