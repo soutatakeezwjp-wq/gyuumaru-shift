@@ -270,6 +270,7 @@
           <button class="btn btn-secondary btn-sm" onclick="AdminShiftEdit.autoGenerate()">自動作成</button>
           <button class="btn btn-success btn-sm" onclick="AdminShiftEdit.finalizeShift()">シフト確定</button>
           <button class="btn btn-outline btn-sm" onclick="AdminShiftEdit.sendNotification()">LINE通知</button>
+          <button class="btn btn-outline btn-sm" onclick="AdminShiftEdit.exportExcel()" style="background:#217346;color:#fff;border-color:#217346">Excel出力</button>
         </div>
       </div>
       <div id="ase-warnings"></div>
@@ -346,6 +347,7 @@
   <div id="toast" class="toast"></div>
 
   <!-- JavaScript -->
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
   <script src="/js/api-client.js"></script>
   <script src="/js/app.js"></script>
   <script src="/js/calendar.js"></script>

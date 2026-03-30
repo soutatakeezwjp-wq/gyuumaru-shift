@@ -780,6 +780,305 @@ var AdminShiftEdit = {
 
     html += '</div>';
     container.innerHTML = html;
+  },
+
+  // シフト表をExcelファイルとして出力する
+  exportExcel: function() {
+    if (this.schedules.length === 0 && this.staffList.length === 0) {
+      App.showToast('シフトデータがありません', 'error');
+      return;
+    }
+
+    var parts = this.yearMonth.split('-');
+    var year = parseInt(parts[0]);
+    var month = parseInt(parts[1]);
+    var daysInMonth = new Date(year, month, 0).getDate();
+    var dayNames = ['日', '月', '火', '水', '木', '金', '土'];
+
+    // 確定シフトをマップ化
+    var schedMap = {};
+    for (var i = 0; i < this.schedules.length; i++) {
+      var s = this.schedules[i];
+      if (!schedMap[s.staffId]) schedMap[s.staffId] = {};
+      schedMap[s.staffId][s.date] = s;
+    }
+
+    // スタッフの月間合計時間
+    var staffHoursMap = {};
+    for (var sh = 0; sh < this.schedules.length; sh++) {
+      var sc = this.schedules[sh];
+      if (!staffHoursMap[sc.staffId]) staffHoursMap[sc.staffId] = 0;
+      staffHoursMap[sc.staffId] += (sc.workHours || 0);
+    }
+
+    // ポジション別にスタッフを分ける
+    var hallStaff = [];
+    var kitchenStaff = [];
+    for (var pi = 0; pi < this.staffList.length; pi++) {
+      var pos = this.staffList[pi].position || 'ホール';
+      if (pos === 'キッチン') { kitchenStaff.push(this.staffList[pi]); }
+      else { hallStaff.push(this.staffList[pi]); }
+    }
+
+    // スタッフIDからポジションを引くマップ
+    var staffPosMap = {};
+    for (var spm = 0; spm < this.staffList.length; spm++) {
+      staffPosMap[this.staffList[spm].id] = this.staffList[spm].position || 'ホール';
+    }
+
+    // 日ごとのポジション別出勤人数
+    var dailyHallCount = {};
+    var dailyKitchenCount = {};
+    for (var dc = 1; dc <= daysInMonth; dc++) {
+      var dcDate = this.yearMonth + '-' + ('0' + dc).slice(-2);
+      dailyHallCount[dcDate] = 0;
+      dailyKitchenCount[dcDate] = 0;
+    }
+    for (var j = 0; j < this.schedules.length; j++) {
+      var sched = this.schedules[j];
+      var schedPos = staffPosMap[sched.staffId] || 'ホール';
+      if (schedPos === 'キッチン') {
+        if (dailyKitchenCount[sched.date] !== undefined) dailyKitchenCount[sched.date]++;
+      } else {
+        if (dailyHallCount[sched.date] !== undefined) dailyHallCount[sched.date]++;
+      }
+    }
+
+    // --- Excelデータの組み立て ---
+    var wb = XLSX.utils.book_new();
+    var wsData = [];
+    var merges = [];
+    var colWidths = [{wch: 12}]; // スタッフ名列の幅
+    for (var cw = 0; cw < daysInMonth; cw++) { colWidths.push({wch: 6}); }
+    colWidths.push({wch: 8}); // 合計列
+
+    // 店舗名
+    var storeName = (App.storeInfo && App.storeInfo.storeName) ? App.storeInfo.storeName : 'ぎゅう丸';
+
+    // 1行目: タイトル
+    var titleRow = [storeName + ' ' + year + '年' + month + '月 シフト表'];
+    wsData.push(titleRow);
+
+    // 2行目: ヘッダー（日付）
+    var headerRow1 = ['スタッフ'];
+    for (var d = 1; d <= daysInMonth; d++) { headerRow1.push(d + '日'); }
+    headerRow1.push('合計h');
+    wsData.push(headerRow1);
+
+    // 3行目: ヘッダー（曜日）
+    var headerRow2 = [''];
+    for (var dw = 1; dw <= daysInMonth; dw++) {
+      var dow = new Date(year, month - 1, dw).getDay();
+      headerRow2.push(dayNames[dow]);
+    }
+    headerRow2.push('');
+    wsData.push(headerRow2);
+
+    // スタッフ行を追加する関数
+    function addStaffRows(staffGroup, groupName) {
+      // グループヘッダー行
+      var groupRow = [groupName + ' (' + staffGroup.length + '名)'];
+      wsData.push(groupRow);
+
+      for (var si = 0; si < staffGroup.length; si++) {
+        var staff = staffGroup[si];
+        var row = [staff.name];
+        for (var day = 1; day <= daysInMonth; day++) {
+          var dateStr = parts[0] + '-' + parts[1] + '-' + ('0' + day).slice(-2);
+          var shift = (schedMap[staff.id] || {})[dateStr];
+          if (shift) {
+            row.push(shift.startTime + '-' + shift.endTime);
+          } else {
+            row.push('');
+          }
+        }
+        // 合計時間
+        var totalH = staffHoursMap[staff.id] || 0;
+        row.push(Math.round(totalH * 10) / 10);
+        wsData.push(row);
+      }
+    }
+
+    addStaffRows(hallStaff, 'ホール');
+    addStaffRows(kitchenStaff, 'キッチン');
+
+    // ホール出勤人数行
+    var hallCountRow = ['ホール出勤'];
+    for (var dd = 1; dd <= daysInMonth; dd++) {
+      var ddDate = this.yearMonth + '-' + ('0' + dd).slice(-2);
+      hallCountRow.push(dailyHallCount[ddDate] || 0);
+    }
+    hallCountRow.push('');
+    wsData.push(hallCountRow);
+
+    // キッチン出勤人数行
+    var kitchenCountRow = ['キッチン出勤'];
+    for (var dk = 1; dk <= daysInMonth; dk++) {
+      var dkDate = this.yearMonth + '-' + ('0' + dk).slice(-2);
+      kitchenCountRow.push(dailyKitchenCount[dkDate] || 0);
+    }
+    kitchenCountRow.push('');
+    wsData.push(kitchenCountRow);
+
+    // ワークシートを作成
+    var ws = XLSX.utils.aoa_to_sheet(wsData);
+
+    // 列幅を設定
+    ws['!cols'] = colWidths;
+
+    // タイトル行のマージ（1行目を全列結合）
+    merges.push({s: {r: 0, c: 0}, e: {r: 0, c: daysInMonth + 1}});
+    ws['!merges'] = merges;
+
+    // --- セルのスタイル設定 ---
+    var range = XLSX.utils.decode_range(ws['!ref']);
+
+    for (var R = range.s.r; R <= range.e.r; R++) {
+      for (var C = range.s.c; C <= range.e.c; C++) {
+        var cellRef = XLSX.utils.encode_cell({r: R, c: C});
+        if (!ws[cellRef]) {
+          ws[cellRef] = {v: '', t: 's'};
+        }
+        var cell = ws[cellRef];
+        if (!cell.s) cell.s = {};
+
+        // 全セルに罫線を付ける（タイトル行以外）
+        if (R >= 1) {
+          cell.s.border = {
+            top: {style: 'thin', color: {rgb: 'CCCCCC'}},
+            bottom: {style: 'thin', color: {rgb: 'CCCCCC'}},
+            left: {style: 'thin', color: {rgb: 'CCCCCC'}},
+            right: {style: 'thin', color: {rgb: 'CCCCCC'}}
+          };
+        }
+
+        // タイトル行
+        if (R === 0) {
+          cell.s.font = {bold: true, sz: 16, color: {rgb: '4A3323'}};
+          cell.s.alignment = {horizontal: 'center', vertical: 'center'};
+          cell.s.fill = {fgColor: {rgb: 'FFF8E1'}};
+        }
+
+        // ヘッダー行（日付と曜日）
+        if (R === 1 || R === 2) {
+          cell.s.font = {bold: true, sz: 10, color: {rgb: 'FFFFFF'}};
+          cell.s.fill = {fgColor: {rgb: '4A3323'}};
+          cell.s.alignment = {horizontal: 'center', vertical: 'center'};
+          // 土日の色分け
+          if (C >= 1 && C <= daysInMonth) {
+            var colDow = new Date(year, month - 1, C).getDay();
+            if (colDow === 0) {
+              cell.s.font = {bold: true, sz: 10, color: {rgb: 'FFCDD2'}};
+              cell.s.fill = {fgColor: {rgb: '4A3323'}};
+            } else if (colDow === 6) {
+              cell.s.font = {bold: true, sz: 10, color: {rgb: '90CAF9'}};
+              cell.s.fill = {fgColor: {rgb: '4A3323'}};
+            }
+          }
+        }
+
+        // スタッフ名列（左端）
+        if (C === 0 && R >= 3) {
+          cell.s.font = {bold: true, sz: 10};
+          cell.s.fill = {fgColor: {rgb: 'F5F5F5'}};
+        }
+
+        // シフトが入っているセル
+        if (R >= 3 && C >= 1 && C <= daysInMonth) {
+          var val = cell.v;
+          if (val && typeof val === 'string' && val.indexOf('-') !== -1 && val.indexOf(':') !== -1) {
+            cell.s.fill = {fgColor: {rgb: 'E8F5E9'}};
+            cell.s.font = {sz: 9, color: {rgb: '2E7D32'}};
+            cell.s.alignment = {horizontal: 'center', vertical: 'center'};
+          } else {
+            cell.s.alignment = {horizontal: 'center', vertical: 'center'};
+          }
+        }
+
+        // 合計列
+        if (C === daysInMonth + 1 && R >= 3) {
+          cell.s.font = {bold: true, sz: 10};
+          cell.s.alignment = {horizontal: 'center'};
+          if (typeof cell.v === 'number' && cell.v > 60) {
+            cell.s.fill = {fgColor: {rgb: 'FFF3E0'}};
+            cell.s.font = {bold: true, sz: 10, color: {rgb: 'E65100'}};
+          }
+        }
+      }
+    }
+
+    // グループヘッダー行（ホール、キッチン）とサマリー行のスタイル
+    var currentRow = 3; // 0:タイトル, 1:日付, 2:曜日
+    // ホールヘッダー
+    var hallHeaderRow = currentRow;
+    for (var hc = 0; hc <= daysInMonth + 1; hc++) {
+      var hRef = XLSX.utils.encode_cell({r: hallHeaderRow, c: hc});
+      if (ws[hRef]) {
+        ws[hRef].s = {
+          font: {bold: true, sz: 11, color: {rgb: 'FFFFFF'}},
+          fill: {fgColor: {rgb: '8D6E63'}},
+          alignment: {horizontal: 'left'},
+          border: {top: {style: 'thin', color: {rgb: '8D6E63'}}, bottom: {style: 'thin', color: {rgb: '8D6E63'}}, left: {style: 'thin', color: {rgb: '8D6E63'}}, right: {style: 'thin', color: {rgb: '8D6E63'}}}
+        };
+      }
+    }
+
+    // キッチンヘッダー
+    var kitchenHeaderRow = hallHeaderRow + 1 + hallStaff.length;
+    for (var kc = 0; kc <= daysInMonth + 1; kc++) {
+      var kRef = XLSX.utils.encode_cell({r: kitchenHeaderRow, c: kc});
+      if (ws[kRef]) {
+        ws[kRef].s = {
+          font: {bold: true, sz: 11, color: {rgb: 'FFFFFF'}},
+          fill: {fgColor: {rgb: '8D6E63'}},
+          alignment: {horizontal: 'left'},
+          border: {top: {style: 'thin', color: {rgb: '8D6E63'}}, bottom: {style: 'thin', color: {rgb: '8D6E63'}}, left: {style: 'thin', color: {rgb: '8D6E63'}}, right: {style: 'thin', color: {rgb: '8D6E63'}}}
+        };
+      }
+    }
+
+    // サマリー行（ホール出勤・キッチン出勤）
+    var summaryStartRow = kitchenHeaderRow + 1 + kitchenStaff.length;
+    var hallMinWeekday = 3; var hallMinWeekend = 5;
+    var kitchenMinWeekday = 2; var kitchenMinWeekend = 4;
+
+    for (var sr = summaryStartRow; sr <= summaryStartRow + 1; sr++) {
+      for (var sc2 = 0; sc2 <= daysInMonth + 1; sc2++) {
+        var sRef = XLSX.utils.encode_cell({r: sr, c: sc2});
+        if (ws[sRef]) {
+          ws[sRef].s = {
+            font: {bold: true, sz: 10, color: {rgb: '4A3323'}},
+            fill: {fgColor: {rgb: 'FFF8E1'}},
+            alignment: {horizontal: 'center'},
+            border: {top: {style: 'medium', color: {rgb: '4A3323'}}, bottom: {style: 'thin', color: {rgb: 'CCCCCC'}}, left: {style: 'thin', color: {rgb: 'CCCCCC'}}, right: {style: 'thin', color: {rgb: 'CCCCCC'}}}
+          };
+          // 人員不足のセルは赤くする
+          if (sc2 >= 1 && sc2 <= daysInMonth && typeof ws[sRef].v === 'number') {
+            var sumDow = new Date(year, month - 1, sc2).getDay();
+            var isWknd = (sumDow === 0 || sumDow === 6);
+            var minCount;
+            if (sr === summaryStartRow) {
+              minCount = isWknd ? hallMinWeekend : hallMinWeekday;
+            } else {
+              minCount = isWknd ? kitchenMinWeekend : kitchenMinWeekday;
+            }
+            if (ws[sRef].v < minCount) {
+              ws[sRef].s.font = {bold: true, sz: 10, color: {rgb: 'C62828'}};
+              ws[sRef].s.fill = {fgColor: {rgb: 'FFCDD2'}};
+            }
+          }
+        }
+      }
+    }
+
+    // ワークブックに追加してダウンロード
+    XLSX.utils.book_append_sheet(wb, ws, month + '月シフト表');
+
+    // ファイル名を生成
+    var fileName = year + '年' + month + '月_' + storeName + '_シフト表.xlsx';
+    XLSX.writeFile(wb, fileName);
+
+    App.showToast('Excelファイルをダウンロードしました', 'success');
   }
 };
 
