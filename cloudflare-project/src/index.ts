@@ -13,6 +13,7 @@ import * as shiftRequestService from './services/shift-request';
 import * as shiftScheduleService from './services/shift-schedule';
 import * as laborCostService from './services/labor-cost';
 import * as lineNotifyService from './services/line-notify';
+import * as dao from './db/dao';
 
 type Variables = {
   storeId: number;
@@ -293,6 +294,25 @@ authed.post('/admin/set-password', async (c) => {
   const body = await c.req.json<{ password: string }>();
   await authService.setAdminPassword(c.env.DB, storeId, body.password);
   return c.json({ success: true, message: 'パスワードを設定しました' });
+});
+
+// --- 店舗設定 ---
+
+// 店舗設定を取得
+authed.get('/admin/settings', async (c) => {
+  const storeId = c.get('storeId');
+  const settings = await dao.getSettings(c.env.DB, storeId);
+  return c.json(settings);
+});
+
+// 店舗設定を更新
+authed.post('/admin/settings', async (c) => {
+  const storeId = c.get('storeId');
+  const body = await c.req.json<Record<string, string>>();
+  for (const [key, value] of Object.entries(body)) {
+    await dao.updateSetting(c.env.DB, storeId, key, value);
+  }
+  return c.json({ success: true, message: '設定を保存しました' });
 });
 
 // 認証付きルートをマウント

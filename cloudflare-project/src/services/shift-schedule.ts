@@ -109,10 +109,48 @@ export async function generateAutoShift(db: D1Database, storeId: number, yearMon
     }
   }
 
-  // Step 3: 不足日を補充（不足しているポジションのスタッフだけを候補にする）
+  // --- 均等化のための集計関数 ---
+  // あるスタッフの現時点での月間シフト回数を数える
+  function countMonthlyShifts(staffId: string): number {
+    return Object.keys(staffShiftMap[staffId] || {}).length;
+  }
+
+  // あるスタッフの現時点での月間労働時間を計算する
+  function calcMonthlyHours(staffId: string): number {
+    let total = 0;
+    const shifts = staffShiftMap[staffId] || {};
+    for (const date of Object.keys(shifts)) {
+      total += calcHoursDiff(shifts[date].startTime, shifts[date].endTime);
+    }
+    return total;
+  }
+
+  // あるスタッフの現時点での土日シフト回数を数える
+  function countWeekendShifts(staffId: string): number {
+    let count = 0;
+    const shifts = staffShiftMap[staffId] || {};
+    for (const date of Object.keys(shifts)) {
+      const dow = new Date(date).getDay();
+      if (dow === 0 || dow === 6) count++;
+    }
+    return count;
+  }
+
+  // 不足日リストをシャッフルして、特定の日付が常に先に処理されないようにする
+  for (let si = shortages.length - 1; si > 0; si--) {
+    const rj = Math.floor(Math.random() * (si + 1));
+    const tmp = shortages[si]; shortages[si] = shortages[rj]; shortages[rj] = tmp;
+  }
+
+  // Step 3: 不足日を補充（均等化スコアで候補者を公平に選ぶ）
   for (const shortage of shortages) {
     const need = shortage.needed - shortage.current;
-    const candidates: Array<{ staffId: string; priority: number }> = [];
+
+    // この日が土日かどうか
+    const shortageDow = new Date(shortage.date).getDay();
+    const isShortageWeekend = (shortageDow === 0 || shortageDow === 6);
+
+    const candidates: Array<{ staffId: string; score: number }> = [];
 
     for (const candidate of allStaff) {
       // 不足しているポジションと同じポジションのスタッフのみ候補にする
@@ -125,16 +163,37 @@ export async function generateAutoShift(db: D1Database, storeId: number, yearMon
       const candReq = (requestMap[candidate.id] || {})[shortage.date];
       if (candReq && candReq.type === REQUEST_TYPES.OFF) continue;
 
-      const priority = candReq && candReq.type === REQUEST_TYPES.EITHER ? 1 : 2;
-
       if (!checkConstraints(candidate.id, shortage.date, shortage.startTime, shortage.endTime, staffShiftMap, candidate.weeklyLimit)) {
         continue;
       }
 
-      candidates.push({ staffId: candidate.id, priority });
+      // --- 均等化スコアの計算（低いほど優先される） ---
+      let score = 0;
+
+      // (1) 「どちらでも」の人は優先（スコアを下げる）
+      if (candReq && candReq.type === REQUEST_TYPES.EITHER) {
+        score -= 50;
+      }
+
+      // (2) 月間シフト回数が少ない人を優先（最重要）
+      score += countMonthlyShifts(candidate.id) * 10;
+
+      // (3) 土日シフトの場合、土日出勤回数が少ない人を優先
+      if (isShortageWeekend) {
+        score += countWeekendShifts(candidate.id) * 15;
+      }
+
+      // (4) 月間労働時間が少ない人を優先
+      score += calcMonthlyHours(candidate.id) * 0.5;
+
+      // (5) 同スコアの場合にランダムで散らす（登録順の偏りを防ぐ）
+      score += Math.random() * 3;
+
+      candidates.push({ staffId: candidate.id, score });
     }
 
-    candidates.sort((a, b) => a.priority - b.priority);
+    // スコアが低い（=負担が少ない）人から選ぶ
+    candidates.sort((a, b) => a.score - b.score);
 
     const fillCount = Math.min(need, candidates.length);
     for (let i = 0; i < fillCount; i++) {

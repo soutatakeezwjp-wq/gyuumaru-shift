@@ -246,6 +246,7 @@
         <div class="card clickable menu-card" onclick="App.showScreen('admin-shift-edit')"><div class="card-icon">&#128197;</div><div class="card-title">シフト表作成</div><div class="card-subtitle">自動作成と編集</div></div>
         <div class="card clickable menu-card" onclick="App.showScreen('admin-labor-cost')"><div class="card-icon">&#128176;</div><div class="card-title">人件費確認</div><div class="card-subtitle">人件費の計算と確認</div></div>
         <div class="card clickable menu-card" onclick="App.showScreen('admin-staff-manage')"><div class="card-icon">&#128101;</div><div class="card-title">スタッフ管理</div><div class="card-subtitle">追加・編集・退職処理</div></div>
+        <div class="card clickable menu-card" onclick="App.showScreen('admin-store-settings')"><div class="card-icon">&#9881;</div><div class="card-title">店舗設定</div><div class="card-subtitle">必要人数・営業時間など</div></div>
       </div>
     </div>
   </div>
@@ -337,6 +338,51 @@
     </div>
   </div>
 
+  <!-- 店舗設定 -->
+  <div id="screen-admin-store-settings" class="screen hidden">
+    <div class="content">
+      <h2 class="mb-16">店舗設定</h2>
+      <div id="settings-message" class="alert alert-info mb-16" style="display:none"></div>
+
+      <div class="card mb-16">
+        <div class="card-title">シフト必要人数（自動作成に使用）</div>
+        <p class="text-muted text-sm mb-16">平日と土日それぞれ、ホール・キッチンに最低何人必要かを設定します。</p>
+        <div class="settings-grid">
+          <div class="settings-group">
+            <div class="settings-group-title">平日（月〜金）</div>
+            <div class="flex gap-8">
+              <div class="form-group" style="flex:1"><label class="form-label">ホール</label><input type="number" id="set-weekday-hall" class="form-input" min="0" max="30"></div>
+              <div class="form-group" style="flex:1"><label class="form-label">キッチン</label><input type="number" id="set-weekday-kitchen" class="form-input" min="0" max="30"></div>
+            </div>
+          </div>
+          <div class="settings-group">
+            <div class="settings-group-title">土日・祝日</div>
+            <div class="flex gap-8">
+              <div class="form-group" style="flex:1"><label class="form-label">ホール</label><input type="number" id="set-weekend-hall" class="form-input" min="0" max="30"></div>
+              <div class="form-group" style="flex:1"><label class="form-label">キッチン</label><input type="number" id="set-weekend-kitchen" class="form-input" min="0" max="30"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card mb-16">
+        <div class="card-title">営業時間</div>
+        <div class="flex gap-8">
+          <div class="form-group" style="flex:1"><label class="form-label">開店時間</label><select id="set-open-time" class="form-select"></select></div>
+          <div class="form-group" style="flex:1"><label class="form-label">閉店時間</label><select id="set-close-time" class="form-select"></select></div>
+        </div>
+      </div>
+
+      <div class="card mb-16">
+        <div class="card-title">シフト希望の締切</div>
+        <p class="text-muted text-sm mb-8">毎月何日までにシフト希望を出してもらうかを設定します。</p>
+        <div class="form-group"><label class="form-label">締切日（前月の何日まで）</label><input type="number" id="set-deadline-day" class="form-input" min="1" max="28" style="width:100px"> <span class="text-muted text-sm">日</span></div>
+      </div>
+
+      <button class="btn btn-primary btn-block btn-lg" onclick="StoreSettings.save()">設定を保存する</button>
+    </div>
+  </div>
+
   <!-- ========================================
        共通パーツ
        ======================================== -->
@@ -347,7 +393,7 @@
   <div id="toast" class="toast"></div>
 
   <!-- JavaScript -->
-  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
   <script src="/js/api-client.js"></script>
   <script src="/js/app.js"></script>
   <script src="/js/calendar.js"></script>

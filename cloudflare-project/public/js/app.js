@@ -114,6 +114,7 @@ var App = {
         case 'admin-shift-edit':
         case 'admin-staff-manage':
         case 'admin-labor-cost':
+        case 'admin-store-settings':
           this.showScreen('admin-dashboard');
           break;
         default:

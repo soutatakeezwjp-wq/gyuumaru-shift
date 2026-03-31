@@ -412,6 +412,7 @@ function onShow_shift_view() { ShiftView.init(); }
 // ========================================
 var AdminShiftEdit = {
   yearMonth: '', schedules: [], staffList: [], requests: [], editingShiftId: null, editingDate: '',
+  settings: {},
 
   init: function() {
     this.yearMonth = getNextMonthStr(); this.populateTimeSelects();
@@ -434,8 +435,8 @@ var AdminShiftEdit = {
   load: function() {
     var self = this; App.showLoading('シフトを読み込み中...');
     // getAllStaffを使ってposition情報を含むスタッフ一覧を取得する
-    Promise.all([API.getShiftSchedule(this.yearMonth), API.getAllStaff(), API.getAllRequests(this.yearMonth)]).then(function(results) {
-      App.hideLoading(); self.schedules = results[0]; self.staffList = results[1]; self.requests = results[2];
+    Promise.all([API.getShiftSchedule(this.yearMonth), API.getAllStaff(), API.getAllRequests(this.yearMonth), API.getStoreSettings()]).then(function(results) {
+      App.hideLoading(); self.schedules = results[0]; self.staffList = results[1]; self.requests = results[2]; self.settings = results[3] || {};
       Calendar.renderHeader('ase-month-header', self.yearMonth, function(newYM) { self.yearMonth = newYM; self.load(); });
       self.renderMatrix();
       self.renderStaffHours();
@@ -577,11 +578,11 @@ var AdminShiftEdit = {
     html += '<tr class="position-header"><td colspan="' + (daysInMonth + 2) + '">キッチン (' + kitchenStaff.length + '名)</td></tr>';
     html += renderStaffRows(kitchenStaff);
 
-    // 最低人数の定義（平日/土日で異なる）
-    var hallMinWeekday = 3;
-    var hallMinWeekend = 5;
-    var kitchenMinWeekday = 2;
-    var kitchenMinWeekend = 4;
+    // 最低人数の定義（店舗設定から取得、未設定時はデフォルト値）
+    var hallMinWeekday = parseInt(this.settings['平日ホール最低人数']) || 3;
+    var hallMinWeekend = parseInt(this.settings['土日ホール最低人数']) || 5;
+    var kitchenMinWeekday = parseInt(this.settings['平日キッチン最低人数']) || 2;
+    var kitchenMinWeekend = parseInt(this.settings['土日キッチン最低人数']) || 4;
 
     // ホール出勤人数のサマリー行
     html += '<tr class="summary-row"><td class="staff-name-col">ホール出勤</td>';
@@ -789,11 +790,36 @@ var AdminShiftEdit = {
       return;
     }
 
+    App.showLoading('Excelを作成中...');
+
+    var self = this;
     var parts = this.yearMonth.split('-');
     var year = parseInt(parts[0]);
     var month = parseInt(parts[1]);
     var daysInMonth = new Date(year, month, 0).getDate();
     var dayNames = ['日', '月', '火', '水', '木', '金', '土'];
+    var storeName = (App.storeInfo && App.storeInfo.storeName) ? App.storeInfo.storeName : 'ぎゅう丸';
+
+    // 色の定義（Webアプリのテーマに合わせる）
+    var C_BROWN_DARK = 'FF4A3323';
+    var C_BROWN_MED  = 'FF8D6E63';
+    var C_CREAM      = 'FFFFF8E1';
+    var C_BG_LIGHT   = 'FFF5F0EB';
+    var C_WHITE      = 'FFFFFFFF';
+    var C_GREEN_BG   = 'FFE8F5E9';
+    var C_GREEN_TXT  = 'FF2E7D32';
+    var C_RED_TXT    = 'FFE53935';
+    var C_BLUE_TXT   = 'FF2196F3';
+    var C_ORANGE_TXT = 'FFE65100';
+    var C_ORANGE_BG  = 'FFFFF3E0';
+    var C_RED_BG     = 'FFFFCDD2';
+    var C_RED_DARK   = 'FFC62828';
+    var C_BORDER     = 'FFD7CCC8';
+    var C_GRAY_LIGHT = 'FFF5F5F5';
+
+    // 共通の罫線スタイル
+    var thinBorder = {style: 'thin', color: {argb: C_BORDER}};
+    var defaultBorder = {top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder};
 
     // 確定シフトをマップ化
     var schedMap = {};
@@ -844,241 +870,219 @@ var AdminShiftEdit = {
       }
     }
 
-    // --- Excelデータの組み立て ---
-    var wb = XLSX.utils.book_new();
-    var wsData = [];
-    var merges = [];
-    var colWidths = [{wch: 12}]; // スタッフ名列の幅
-    for (var cw = 0; cw < daysInMonth; cw++) { colWidths.push({wch: 6}); }
-    colWidths.push({wch: 8}); // 合計列
+    // --- ExcelJSでワークブック作成 ---
+    var workbook = new ExcelJS.Workbook();
+    workbook.creator = 'ぎゅう丸シフト管理システム';
+    var ws = workbook.addWorksheet(month + '月シフト表', {
+      properties: {defaultRowHeight: 22},
+      views: [{state: 'frozen', xSplit: 1, ySplit: 3}]
+    });
 
-    // 店舗名
-    var storeName = (App.storeInfo && App.storeInfo.storeName) ? App.storeInfo.storeName : 'ぎゅう丸';
+    // 列幅を設定
+    var columns = [{width: 14}]; // A列: スタッフ名
+    for (var cw = 0; cw < daysInMonth; cw++) { columns.push({width: 7}); }
+    columns.push({width: 9}); // 合計列
+    ws.columns = columns;
 
-    // 1行目: タイトル
-    var titleRow = [storeName + ' ' + year + '年' + month + '月 シフト表'];
-    wsData.push(titleRow);
+    var totalCols = daysInMonth + 2; // スタッフ名 + 日数 + 合計
 
-    // 2行目: ヘッダー（日付）
-    var headerRow1 = ['スタッフ'];
-    for (var d = 1; d <= daysInMonth; d++) { headerRow1.push(d + '日'); }
-    headerRow1.push('合計h');
-    wsData.push(headerRow1);
+    // ====== 1行目: タイトル ======
+    var titleRow = ws.addRow([storeName + '  ' + year + '年' + month + '月 シフト表']);
+    ws.mergeCells(1, 1, 1, totalCols);
+    titleRow.height = 36;
+    var titleCell = ws.getCell(1, 1);
+    titleCell.font = {name: 'Yu Gothic', bold: true, size: 14, color: {argb: C_BROWN_DARK}};
+    titleCell.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: C_CREAM}};
+    titleCell.alignment = {horizontal: 'center', vertical: 'middle'};
+    titleCell.border = {bottom: {style: 'medium', color: {argb: C_BROWN_DARK}}};
 
-    // 3行目: ヘッダー（曜日）
-    var headerRow2 = [''];
+    // ====== 2行目: 日付ヘッダー ======
+    var dateHeaderValues = ['スタッフ'];
+    for (var d = 1; d <= daysInMonth; d++) { dateHeaderValues.push(d); }
+    dateHeaderValues.push('合計');
+    var dateRow = ws.addRow(dateHeaderValues);
+    dateRow.height = 22;
+
+    // ====== 3行目: 曜日ヘッダー ======
+    var dowValues = [''];
     for (var dw = 1; dw <= daysInMonth; dw++) {
       var dow = new Date(year, month - 1, dw).getDay();
-      headerRow2.push(dayNames[dow]);
+      dowValues.push(dayNames[dow]);
     }
-    headerRow2.push('');
-    wsData.push(headerRow2);
+    dowValues.push('');
+    var dowRow = ws.addRow(dowValues);
+    dowRow.height = 18;
+
+    // 2-3行目のスタイル
+    for (var hc = 1; hc <= totalCols; hc++) {
+      for (var hr = 2; hr <= 3; hr++) {
+        var hCell = ws.getCell(hr, hc);
+        hCell.font = {name: 'Yu Gothic', bold: true, size: 9, color: {argb: C_WHITE}};
+        hCell.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: C_BROWN_DARK}};
+        hCell.alignment = {horizontal: 'center', vertical: 'middle'};
+        hCell.border = defaultBorder;
+      }
+      // 土日の色分け
+      if (hc >= 2 && hc <= daysInMonth + 1) {
+        var colDay = hc - 1;
+        var colDow = new Date(year, month - 1, colDay).getDay();
+        if (colDow === 0) {
+          ws.getCell(2, hc).font = {name: 'Yu Gothic', bold: true, size: 9, color: {argb: C_RED_TXT}};
+          ws.getCell(3, hc).font = {name: 'Yu Gothic', bold: true, size: 9, color: {argb: C_RED_TXT}};
+        } else if (colDow === 6) {
+          ws.getCell(2, hc).font = {name: 'Yu Gothic', bold: true, size: 9, color: {argb: C_BLUE_TXT}};
+          ws.getCell(3, hc).font = {name: 'Yu Gothic', bold: true, size: 9, color: {argb: C_BLUE_TXT}};
+        }
+      }
+    }
 
     // スタッフ行を追加する関数
-    function addStaffRows(staffGroup, groupName) {
+    function addPositionGroup(staffGroup, groupName) {
       // グループヘッダー行
-      var groupRow = [groupName + ' (' + staffGroup.length + '名)'];
-      wsData.push(groupRow);
+      var groupValues = [groupName + ' (' + staffGroup.length + '名)'];
+      for (var g = 1; g < totalCols; g++) { groupValues.push(''); }
+      var gRow = ws.addRow(groupValues);
+      var gRowNum = gRow.number;
+      gRow.height = 24;
+      ws.mergeCells(gRowNum, 1, gRowNum, totalCols);
+      var gCell = ws.getCell(gRowNum, 1);
+      gCell.font = {name: 'Yu Gothic', bold: true, size: 11, color: {argb: C_WHITE}};
+      gCell.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: C_BROWN_MED}};
+      gCell.alignment = {vertical: 'middle'};
+      gCell.border = defaultBorder;
 
+      // 各スタッフの行
       for (var si = 0; si < staffGroup.length; si++) {
         var staff = staffGroup[si];
-        var row = [staff.name];
+        var rowValues = [staff.name];
         for (var day = 1; day <= daysInMonth; day++) {
           var dateStr = parts[0] + '-' + parts[1] + '-' + ('0' + day).slice(-2);
           var shift = (schedMap[staff.id] || {})[dateStr];
           if (shift) {
-            row.push(shift.startTime + '-' + shift.endTime);
+            rowValues.push(shift.startTime + '\n' + shift.endTime);
           } else {
-            row.push('');
+            rowValues.push('');
           }
         }
-        // 合計時間
         var totalH = staffHoursMap[staff.id] || 0;
-        row.push(Math.round(totalH * 10) / 10);
-        wsData.push(row);
-      }
-    }
+        rowValues.push(Math.round(totalH * 10) / 10);
+        var sRow = ws.addRow(rowValues);
+        var sRowNum = sRow.number;
+        sRow.height = 28;
 
-    addStaffRows(hallStaff, 'ホール');
-    addStaffRows(kitchenStaff, 'キッチン');
+        // 偶数行は薄い背景色
+        var isEven = (si % 2 === 1);
+        var rowBg = isEven ? C_BG_LIGHT : C_WHITE;
 
-    // ホール出勤人数行
-    var hallCountRow = ['ホール出勤'];
-    for (var dd = 1; dd <= daysInMonth; dd++) {
-      var ddDate = this.yearMonth + '-' + ('0' + dd).slice(-2);
-      hallCountRow.push(dailyHallCount[ddDate] || 0);
-    }
-    hallCountRow.push('');
-    wsData.push(hallCountRow);
+        for (var col = 1; col <= totalCols; col++) {
+          var sCell = ws.getCell(sRowNum, col);
+          sCell.border = defaultBorder;
+          sCell.alignment = {horizontal: 'center', vertical: 'middle', wrapText: true};
 
-    // キッチン出勤人数行
-    var kitchenCountRow = ['キッチン出勤'];
-    for (var dk = 1; dk <= daysInMonth; dk++) {
-      var dkDate = this.yearMonth + '-' + ('0' + dk).slice(-2);
-      kitchenCountRow.push(dailyKitchenCount[dkDate] || 0);
-    }
-    kitchenCountRow.push('');
-    wsData.push(kitchenCountRow);
-
-    // ワークシートを作成
-    var ws = XLSX.utils.aoa_to_sheet(wsData);
-
-    // 列幅を設定
-    ws['!cols'] = colWidths;
-
-    // タイトル行のマージ（1行目を全列結合）
-    merges.push({s: {r: 0, c: 0}, e: {r: 0, c: daysInMonth + 1}});
-    ws['!merges'] = merges;
-
-    // --- セルのスタイル設定 ---
-    var range = XLSX.utils.decode_range(ws['!ref']);
-
-    for (var R = range.s.r; R <= range.e.r; R++) {
-      for (var C = range.s.c; C <= range.e.c; C++) {
-        var cellRef = XLSX.utils.encode_cell({r: R, c: C});
-        if (!ws[cellRef]) {
-          ws[cellRef] = {v: '', t: 's'};
-        }
-        var cell = ws[cellRef];
-        if (!cell.s) cell.s = {};
-
-        // 全セルに罫線を付ける（タイトル行以外）
-        if (R >= 1) {
-          cell.s.border = {
-            top: {style: 'thin', color: {rgb: 'CCCCCC'}},
-            bottom: {style: 'thin', color: {rgb: 'CCCCCC'}},
-            left: {style: 'thin', color: {rgb: 'CCCCCC'}},
-            right: {style: 'thin', color: {rgb: 'CCCCCC'}}
-          };
-        }
-
-        // タイトル行
-        if (R === 0) {
-          cell.s.font = {bold: true, sz: 16, color: {rgb: '4A3323'}};
-          cell.s.alignment = {horizontal: 'center', vertical: 'center'};
-          cell.s.fill = {fgColor: {rgb: 'FFF8E1'}};
-        }
-
-        // ヘッダー行（日付と曜日）
-        if (R === 1 || R === 2) {
-          cell.s.font = {bold: true, sz: 10, color: {rgb: 'FFFFFF'}};
-          cell.s.fill = {fgColor: {rgb: '4A3323'}};
-          cell.s.alignment = {horizontal: 'center', vertical: 'center'};
-          // 土日の色分け
-          if (C >= 1 && C <= daysInMonth) {
-            var colDow = new Date(year, month - 1, C).getDay();
-            if (colDow === 0) {
-              cell.s.font = {bold: true, sz: 10, color: {rgb: 'FFCDD2'}};
-              cell.s.fill = {fgColor: {rgb: '4A3323'}};
-            } else if (colDow === 6) {
-              cell.s.font = {bold: true, sz: 10, color: {rgb: '90CAF9'}};
-              cell.s.fill = {fgColor: {rgb: '4A3323'}};
+          if (col === 1) {
+            // スタッフ名
+            sCell.font = {name: 'Yu Gothic', bold: true, size: 9, color: {argb: C_BROWN_DARK}};
+            sCell.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: C_GRAY_LIGHT}};
+            sCell.alignment = {horizontal: 'left', vertical: 'middle'};
+          } else if (col === totalCols) {
+            // 合計列
+            sCell.font = {name: 'Yu Gothic', bold: true, size: 9};
+            sCell.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: rowBg}};
+            if (typeof sCell.value === 'number' && sCell.value > 80) {
+              sCell.font = {name: 'Yu Gothic', bold: true, size: 9, color: {argb: C_RED_DARK}};
+              sCell.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: C_RED_BG}};
+            } else if (typeof sCell.value === 'number' && sCell.value > 60) {
+              sCell.font = {name: 'Yu Gothic', bold: true, size: 9, color: {argb: C_ORANGE_TXT}};
+              sCell.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: C_ORANGE_BG}};
             }
-          }
-        }
-
-        // スタッフ名列（左端）
-        if (C === 0 && R >= 3) {
-          cell.s.font = {bold: true, sz: 10};
-          cell.s.fill = {fgColor: {rgb: 'F5F5F5'}};
-        }
-
-        // シフトが入っているセル
-        if (R >= 3 && C >= 1 && C <= daysInMonth) {
-          var val = cell.v;
-          if (val && typeof val === 'string' && val.indexOf('-') !== -1 && val.indexOf(':') !== -1) {
-            cell.s.fill = {fgColor: {rgb: 'E8F5E9'}};
-            cell.s.font = {sz: 9, color: {rgb: '2E7D32'}};
-            cell.s.alignment = {horizontal: 'center', vertical: 'center'};
           } else {
-            cell.s.alignment = {horizontal: 'center', vertical: 'center'};
-          }
-        }
-
-        // 合計列
-        if (C === daysInMonth + 1 && R >= 3) {
-          cell.s.font = {bold: true, sz: 10};
-          cell.s.alignment = {horizontal: 'center'};
-          if (typeof cell.v === 'number' && cell.v > 60) {
-            cell.s.fill = {fgColor: {rgb: 'FFF3E0'}};
-            cell.s.font = {bold: true, sz: 10, color: {rgb: 'E65100'}};
-          }
-        }
-      }
-    }
-
-    // グループヘッダー行（ホール、キッチン）とサマリー行のスタイル
-    var currentRow = 3; // 0:タイトル, 1:日付, 2:曜日
-    // ホールヘッダー
-    var hallHeaderRow = currentRow;
-    for (var hc = 0; hc <= daysInMonth + 1; hc++) {
-      var hRef = XLSX.utils.encode_cell({r: hallHeaderRow, c: hc});
-      if (ws[hRef]) {
-        ws[hRef].s = {
-          font: {bold: true, sz: 11, color: {rgb: 'FFFFFF'}},
-          fill: {fgColor: {rgb: '8D6E63'}},
-          alignment: {horizontal: 'left'},
-          border: {top: {style: 'thin', color: {rgb: '8D6E63'}}, bottom: {style: 'thin', color: {rgb: '8D6E63'}}, left: {style: 'thin', color: {rgb: '8D6E63'}}, right: {style: 'thin', color: {rgb: '8D6E63'}}}
-        };
-      }
-    }
-
-    // キッチンヘッダー
-    var kitchenHeaderRow = hallHeaderRow + 1 + hallStaff.length;
-    for (var kc = 0; kc <= daysInMonth + 1; kc++) {
-      var kRef = XLSX.utils.encode_cell({r: kitchenHeaderRow, c: kc});
-      if (ws[kRef]) {
-        ws[kRef].s = {
-          font: {bold: true, sz: 11, color: {rgb: 'FFFFFF'}},
-          fill: {fgColor: {rgb: '8D6E63'}},
-          alignment: {horizontal: 'left'},
-          border: {top: {style: 'thin', color: {rgb: '8D6E63'}}, bottom: {style: 'thin', color: {rgb: '8D6E63'}}, left: {style: 'thin', color: {rgb: '8D6E63'}}, right: {style: 'thin', color: {rgb: '8D6E63'}}}
-        };
-      }
-    }
-
-    // サマリー行（ホール出勤・キッチン出勤）
-    var summaryStartRow = kitchenHeaderRow + 1 + kitchenStaff.length;
-    var hallMinWeekday = 3; var hallMinWeekend = 5;
-    var kitchenMinWeekday = 2; var kitchenMinWeekend = 4;
-
-    for (var sr = summaryStartRow; sr <= summaryStartRow + 1; sr++) {
-      for (var sc2 = 0; sc2 <= daysInMonth + 1; sc2++) {
-        var sRef = XLSX.utils.encode_cell({r: sr, c: sc2});
-        if (ws[sRef]) {
-          ws[sRef].s = {
-            font: {bold: true, sz: 10, color: {rgb: '4A3323'}},
-            fill: {fgColor: {rgb: 'FFF8E1'}},
-            alignment: {horizontal: 'center'},
-            border: {top: {style: 'medium', color: {rgb: '4A3323'}}, bottom: {style: 'thin', color: {rgb: 'CCCCCC'}}, left: {style: 'thin', color: {rgb: 'CCCCCC'}}, right: {style: 'thin', color: {rgb: 'CCCCCC'}}}
-          };
-          // 人員不足のセルは赤くする
-          if (sc2 >= 1 && sc2 <= daysInMonth && typeof ws[sRef].v === 'number') {
-            var sumDow = new Date(year, month - 1, sc2).getDay();
-            var isWknd = (sumDow === 0 || sumDow === 6);
-            var minCount;
-            if (sr === summaryStartRow) {
-              minCount = isWknd ? hallMinWeekend : hallMinWeekday;
+            // シフトセル
+            var cellVal = sCell.value;
+            if (cellVal && typeof cellVal === 'string' && cellVal.indexOf(':') !== -1) {
+              sCell.font = {name: 'Yu Gothic', bold: true, size: 8, color: {argb: C_GREEN_TXT}};
+              sCell.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: C_GREEN_BG}};
             } else {
-              minCount = isWknd ? kitchenMinWeekend : kitchenMinWeekday;
+              sCell.font = {name: 'Yu Gothic', size: 8};
+              sCell.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: rowBg}};
             }
-            if (ws[sRef].v < minCount) {
-              ws[sRef].s.font = {bold: true, sz: 10, color: {rgb: 'C62828'}};
-              ws[sRef].s.fill = {fgColor: {rgb: 'FFCDD2'}};
+            // 土日の列は薄い色を付ける
+            var dayNum = col - 1;
+            var cellDow = new Date(year, month - 1, dayNum).getDay();
+            if (!cellVal && cellDow === 0) {
+              sCell.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: 'FFFFF5F5'}};
+            } else if (!cellVal && cellDow === 6) {
+              sCell.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: 'FFF5F9FF'}};
             }
           }
         }
       }
     }
 
-    // ワークブックに追加してダウンロード
-    XLSX.utils.book_append_sheet(wb, ws, month + '月シフト表');
+    addPositionGroup(hallStaff, 'ホール');
+    addPositionGroup(kitchenStaff, 'キッチン');
 
-    // ファイル名を生成
+    // ====== サマリー行 ======
+    var hallMinWeekday = parseInt(self.settings['平日ホール最低人数']) || 3;
+    var hallMinWeekend = parseInt(self.settings['土日ホール最低人数']) || 5;
+    var kitchenMinWeekday = parseInt(self.settings['平日キッチン最低人数']) || 2;
+    var kitchenMinWeekend = parseInt(self.settings['土日キッチン最低人数']) || 4;
+
+    function addSummaryRow(label, dailyCount, minWeekday, minWeekend) {
+      var vals = [label];
+      for (var dd = 1; dd <= daysInMonth; dd++) {
+        var ddDate = self.yearMonth + '-' + ('0' + dd).slice(-2);
+        vals.push(dailyCount[ddDate] || 0);
+      }
+      vals.push('');
+      var sumRow = ws.addRow(vals);
+      var sumRowNum = sumRow.number;
+      sumRow.height = 22;
+
+      for (var sc2 = 1; sc2 <= totalCols; sc2++) {
+        var sumCell = ws.getCell(sumRowNum, sc2);
+        sumCell.font = {name: 'Yu Gothic', bold: true, size: 9, color: {argb: C_BROWN_DARK}};
+        sumCell.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: C_CREAM}};
+        sumCell.alignment = {horizontal: 'center', vertical: 'middle'};
+        sumCell.border = {
+          top: {style: 'medium', color: {argb: C_BROWN_DARK}},
+          bottom: thinBorder, left: thinBorder, right: thinBorder
+        };
+        if (sc2 === 1) { sumCell.alignment = {horizontal: 'left', vertical: 'middle'}; }
+        // 人員不足を赤く
+        if (sc2 >= 2 && sc2 <= daysInMonth + 1 && typeof sumCell.value === 'number') {
+          var sDow = new Date(year, month - 1, sc2 - 1).getDay();
+          var isWknd = (sDow === 0 || sDow === 6);
+          var minReq = isWknd ? minWeekend : minWeekday;
+          if (sumCell.value < minReq) {
+            sumCell.font = {name: 'Yu Gothic', bold: true, size: 9, color: {argb: C_RED_DARK}};
+            sumCell.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: C_RED_BG}};
+          }
+        }
+      }
+    }
+
+    addSummaryRow('ホール出勤', dailyHallCount, hallMinWeekday, hallMinWeekend);
+    addSummaryRow('キッチン出勤', dailyKitchenCount, kitchenMinWeekday, kitchenMinWeekend);
+
+    // ====== ダウンロード ======
     var fileName = year + '年' + month + '月_' + storeName + '_シフト表.xlsx';
-    XLSX.writeFile(wb, fileName);
-
-    App.showToast('Excelファイルをダウンロードしました', 'success');
+    workbook.xlsx.writeBuffer().then(function(buffer) {
+      var blob = new Blob([buffer], {type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      App.hideLoading();
+      App.showToast('Excelファイルをダウンロードしました', 'success');
+    }).catch(function(err) {
+      App.hideLoading();
+      console.error('Excel出力エラー:', err);
+      App.showToast('Excel出力に失敗しました', 'error');
+    });
   }
 };
 
@@ -1233,3 +1237,87 @@ var LaborCost = {
 };
 
 function onShow_admin_labor_cost() { LaborCost.init(); }
+
+// ========================================
+// 店舗設定（管理者）
+// ========================================
+
+var StoreSettings = {
+  settings: {},
+
+  init: function() {
+    var self = this;
+    this.populateTimeSelects();
+    App.showLoading('設定を読み込み中...');
+    API.getStoreSettings().then(function(settings) {
+      App.hideLoading();
+      self.settings = settings || {};
+      self.render();
+    }).catch(function() {
+      App.hideLoading();
+      App.showToast('設定の読み込みに失敗しました', 'error');
+    });
+  },
+
+  populateTimeSelects: function() {
+    var wait = function() {
+      if (!App.timeSlots) { setTimeout(wait, 100); return; }
+      var selects = ['set-open-time', 'set-close-time'];
+      for (var s = 0; s < selects.length; s++) {
+        var el = document.getElementById(selects[s]);
+        if (!el) continue;
+        el.innerHTML = '';
+        for (var i = 0; i < App.timeSlots.length; i++) {
+          var opt = document.createElement('option');
+          opt.value = App.timeSlots[i];
+          opt.textContent = App.timeSlots[i];
+          el.appendChild(opt);
+        }
+      }
+    };
+    wait();
+  },
+
+  render: function() {
+    var s = this.settings;
+    // 必要人数
+    document.getElementById('set-weekday-hall').value = s['平日ホール最低人数'] || '3';
+    document.getElementById('set-weekday-kitchen').value = s['平日キッチン最低人数'] || '2';
+    document.getElementById('set-weekend-hall').value = s['土日ホール最低人数'] || '5';
+    document.getElementById('set-weekend-kitchen').value = s['土日キッチン最低人数'] || '4';
+    // 営業時間
+    var openEl = document.getElementById('set-open-time');
+    var closeEl = document.getElementById('set-close-time');
+    if (openEl) openEl.value = s['営業開始'] || '11:00';
+    if (closeEl) closeEl.value = s['営業終了'] || '23:00';
+    // 締切日
+    document.getElementById('set-deadline-day').value = s['希望提出締切日'] || '20';
+  },
+
+  save: function() {
+    var newSettings = {
+      '平日ホール最低人数': document.getElementById('set-weekday-hall').value,
+      '平日キッチン最低人数': document.getElementById('set-weekday-kitchen').value,
+      '土日ホール最低人数': document.getElementById('set-weekend-hall').value,
+      '土日キッチン最低人数': document.getElementById('set-weekend-kitchen').value,
+      '営業開始': document.getElementById('set-open-time').value,
+      '営業終了': document.getElementById('set-close-time').value,
+      '希望提出締切日': document.getElementById('set-deadline-day').value
+    };
+
+    App.showLoading('設定を保存中...');
+    API.updateStoreSettings(newSettings).then(function(result) {
+      App.hideLoading();
+      if (result.success) {
+        App.showToast('設定を保存しました', 'success');
+      } else {
+        App.showToast(result.message || '保存に失敗しました', 'error');
+      }
+    }).catch(function() {
+      App.hideLoading();
+      App.showToast('保存に失敗しました', 'error');
+    });
+  }
+};
+
+function onShow_admin_store_settings() { StoreSettings.init(); }

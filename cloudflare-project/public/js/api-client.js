@@ -178,5 +178,17 @@ var API = {
 
   testLineNotification: function() {
     return this._fetch('POST', '/admin/line/test');
+  },
+
+  // ========================================
+  // 店舗設定
+  // ========================================
+
+  getStoreSettings: function() {
+    return this._fetch('GET', '/admin/settings');
+  },
+
+  updateStoreSettings: function(settings) {
+    return this._fetch('POST', '/admin/settings', settings);
   }
 };

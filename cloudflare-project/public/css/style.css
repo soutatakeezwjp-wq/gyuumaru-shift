@@ -364,6 +364,23 @@ body {
   transform: translateX(-50%);
 }
 
+/* 店舗設定画面 */
+.settings-grid { display: flex; flex-direction: column; gap: 16px; }
+.settings-group {
+  background: var(--color-base);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 16px;
+}
+.settings-group-title {
+  font-weight: bold;
+  font-size: 15px;
+  color: var(--color-main);
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--color-main);
+}
+
 /* レスポンシブ */
 @media (max-width: 480px) {
   .content { padding: 12px; }

@@ -2,7 +2,7 @@
 
 import * as dao from '../db/dao';
 import { REQUEST_TYPES } from '../config';
-import type { ShiftRequest, ShiftRequestInput, RequestSummary, ApiResult } from '../types';
+import type { ShiftRequest, ShiftRequestInput, RequestSummary, ApiResult, StaffListItem } from '../types';
 
 // シフト希望を一括提出する
 export async function submitShiftRequests(
@@ -48,13 +48,13 @@ export async function getRequestSummary(db: D1Database, storeId: number, yearMon
   }
 
   let submittedCount = 0;
-  const notSubmitted: Array<{ id: string; name: string; kana: string }> = [];
+  const notSubmitted: StaffListItem[] = [];
 
   for (const staff of allStaff) {
     if (submittedStaffIds.has(staff.id)) {
       submittedCount++;
     } else {
-      notSubmitted.push({ id: staff.id, name: staff.name, kana: staff.kana });
+      notSubmitted.push({ id: staff.id, name: staff.name, kana: staff.kana, position: staff.position });
     }
   }
 
