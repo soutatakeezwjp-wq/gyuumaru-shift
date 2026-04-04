@@ -267,14 +267,21 @@
       <h2 class="mb-16">シフト表作成・編集</h2>
       <div class="flex-between mb-16" style="flex-wrap:wrap;gap:8px">
         <div id="ase-month-header"></div>
-        <div class="flex gap-8">
+        <div class="flex gap-8" style="flex-wrap:wrap">
           <button class="btn btn-secondary btn-sm" onclick="AdminShiftEdit.autoGenerate()">自動作成</button>
+          <button class="btn btn-outline btn-sm" onclick="AdminShiftEdit.clearShift()" style="color:#C62828;border-color:#C62828">クリア</button>
           <button class="btn btn-success btn-sm" onclick="AdminShiftEdit.finalizeShift()">シフト確定</button>
           <button class="btn btn-outline btn-sm" onclick="AdminShiftEdit.sendNotification()">LINE通知</button>
           <button class="btn btn-outline btn-sm" onclick="AdminShiftEdit.exportExcel()" style="background:#217346;color:#fff;border-color:#217346">Excel出力</button>
         </div>
       </div>
+      <div id="ase-request-summary" class="mb-8"></div>
       <div id="ase-warnings"></div>
+      <div class="flex gap-8 mb-8">
+        <button class="btn btn-sm view-btn active" id="view-month-btn" onclick="AdminShiftEdit.setView('month')">月表示</button>
+        <button class="btn btn-sm view-btn" id="view-week-btn" onclick="AdminShiftEdit.setView('week')">週表示</button>
+        <button class="btn btn-sm view-btn" id="view-day-btn" onclick="AdminShiftEdit.setView('day')">日表示</button>
+      </div>
       <div class="shift-matrix-wrapper"><div id="ase-matrix"><div class="text-center text-muted" style="padding:40px">シフトデータを読み込み中...</div></div></div>
       <div id="ase-staff-hours" class="mt-16"></div>
     </div>
@@ -284,8 +291,14 @@
         <div class="modal-header"><span class="modal-title" id="ase-modal-title">シフト編集</span><button class="modal-close" onclick="App.hideModal('ase-edit-modal')">&#10005;</button></div>
         <div class="form-group"><label class="form-label">スタッフ</label><select id="ase-modal-staff" class="form-select"></select></div>
         <div class="flex gap-8">
-          <div class="form-group" style="flex:1"><label class="form-label">開始時間</label><select id="ase-modal-start" class="form-select"></select></div>
-          <div class="form-group" style="flex:1"><label class="form-label">終了時間</label><select id="ase-modal-end" class="form-select"></select></div>
+          <div class="form-group" style="flex:1"><label class="form-label">開始時間</label><select id="ase-modal-start" class="form-select" onchange="AdminShiftEdit.updateWorkHoursPreview()"></select></div>
+          <div class="form-group" style="flex:1"><label class="form-label">終了時間</label><select id="ase-modal-end" class="form-select" onchange="AdminShiftEdit.updateWorkHoursPreview()"></select></div>
+        </div>
+        <div id="ase-work-hours-preview" style="padding:8px;background:#F5F0EB;border-radius:6px;font-size:13px;text-align:center;margin-bottom:8px"></div>
+        <div class="flex gap-8">
+          <button class="btn btn-outline btn-sm" style="flex:1" onclick="AdminShiftEdit.setQuickTime('11:00','15:00')">ランチ</button>
+          <button class="btn btn-outline btn-sm" style="flex:1" onclick="AdminShiftEdit.setQuickTime('17:00','22:00')">ディナー</button>
+          <button class="btn btn-outline btn-sm" style="flex:1" onclick="AdminShiftEdit.setQuickTime('11:00','22:00')">通し</button>
         </div>
         <div class="flex gap-8 mt-16">
           <button class="btn btn-danger btn-sm" style="flex:1" id="ase-delete-btn" onclick="AdminShiftEdit.deleteEntry()">削除</button>
@@ -371,6 +384,13 @@
           <div class="form-group" style="flex:1"><label class="form-label">開店時間</label><select id="set-open-time" class="form-select"></select></div>
           <div class="form-group" style="flex:1"><label class="form-label">閉店時間</label><select id="set-close-time" class="form-select"></select></div>
         </div>
+      </div>
+
+      <div class="card mb-16">
+        <div class="card-title">時間帯別の必要人数</div>
+        <p class="text-muted text-sm mb-8">時間帯ごとにホール・キッチンの必要人数を設定します。シフト表に人数過不足が表示されます。</p>
+        <div id="time-slot-staffing-container"></div>
+        <button class="btn btn-outline btn-sm mt-8" onclick="StoreSettings.addTimeSlot()">+ 時間帯を追加</button>
       </div>
 
       <div class="card mb-16">

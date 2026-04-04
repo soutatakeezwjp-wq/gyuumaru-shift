@@ -163,7 +163,9 @@ export async function generateAutoShift(db: D1Database, storeId: number, yearMon
       const candReq = (requestMap[candidate.id] || {})[shortage.date];
       if (candReq && candReq.type === REQUEST_TYPES.OFF) continue;
 
-      if (!checkConstraints(candidate.id, shortage.date, shortage.startTime, shortage.endTime, staffShiftMap, candidate.weeklyLimit)) {
+      // 正社員は週60h、アルバイトは週40hが上限
+      var candidateWeeklyLimit = candidate.employmentType === '正社員' ? TIME_CONFIG.FULLTIME_WEEKLY_LIMIT : (candidate.weeklyLimit || TIME_CONFIG.WEEKLY_HOUR_LIMIT);
+      if (!checkConstraints(candidate.id, shortage.date, shortage.startTime, shortage.endTime, staffShiftMap, candidateWeeklyLimit)) {
         continue;
       }
 
@@ -318,6 +320,13 @@ export async function deleteShiftEntry(db: D1Database, storeId: number, shiftId:
     return { success: true, message: '削除しました' };
   }
   return { success: false, message: 'シフトが見つかりません' };
+}
+
+// シフトを全クリアする
+export async function clearShift(db: D1Database, storeId: number, yearMonth: string): Promise<ApiResult> {
+  await dao.clearShiftSchedules(db, storeId, yearMonth);
+  await dao.addLog(db, storeId, '管理者', 'シフトクリア', yearMonth);
+  return { success: true, message: yearMonth + 'のシフトをクリアしました' };
 }
 
 // シフトを確定する

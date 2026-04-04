@@ -125,15 +125,23 @@ function calcStaffCost(staff: StaffData, shifts: ShiftSchedule[], position: stri
   let isDanger = false;
 
   if (staff.employmentType === EMPLOYMENT_TYPES.FULL_TIME) {
-    // 正社員: 月間上限(60h)を超えた分 × 時給相当 × 1.3倍
-    // 時給相当 = 月給 / 160（月160時間が基準）
+    // 正社員: 月間基準240h、見込み残業込み
+    // 時給相当 = 月給 / 160（法定基準時間）
+    // 月間240hを超えた分が追加残業、うち60hを超えた分は1.3倍
     if (totalHours > monthlyLimit) {
       const hourlyEquivalent = (staff.monthlySalary || 0) / 160;
       const overtimeHours = totalHours - monthlyLimit;
-      overtimePay = Math.round(hourlyEquivalent * overtimeHours * TIME_CONFIG.FULLTIME_OVERTIME_RATE);
+      if (overtimeHours > TIME_CONFIG.FULLTIME_OVERTIME_THRESHOLD) {
+        // 60h以内は通常残業（1.0倍）、60h超は1.3倍
+        const normalOT = TIME_CONFIG.FULLTIME_OVERTIME_THRESHOLD;
+        const heavyOT = overtimeHours - TIME_CONFIG.FULLTIME_OVERTIME_THRESHOLD;
+        overtimePay = Math.round(hourlyEquivalent * normalOT + hourlyEquivalent * heavyOT * TIME_CONFIG.FULLTIME_OVERTIME_RATE);
+      } else {
+        overtimePay = Math.round(hourlyEquivalent * overtimeHours);
+      }
       isOverLimit = true;
     }
-    // 危険ライン判定（80h超）
+    // 危険ライン判定（280h超）
     if (totalHours > TIME_CONFIG.FULLTIME_DANGER_LINE) {
       isDanger = true;
     }

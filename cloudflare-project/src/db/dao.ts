@@ -75,7 +75,8 @@ export async function getAllStaffData(db: DB, storeId: number, activeOnly: boole
   if (activeOnly) {
     sql += ' AND status = ?';
   }
-  sql += ' ORDER BY kana ASC';
+  // 正社員を先に表示、その中でフリガナ順
+  sql += ' ORDER BY CASE WHEN employment_type = \'正社員\' THEN 0 ELSE 1 END, kana ASC';
 
   const stmt = activeOnly
     ? db.prepare(sql).bind(storeId, STAFF_STATUS.ACTIVE)
@@ -297,6 +298,12 @@ export async function addShiftScheduleEntry(
 export async function deleteShiftScheduleEntry(db: DB, shiftId: string): Promise<boolean> {
   const result = await db.prepare('DELETE FROM shift_schedules WHERE id = ?').bind(shiftId).run();
   return (result.meta.changes ?? 0) > 0;
+}
+
+export async function clearShiftSchedules(db: DB, storeId: number, yearMonth: string): Promise<void> {
+  await db.prepare(
+    'DELETE FROM shift_schedules WHERE store_id = ? AND year_month = ?'
+  ).bind(storeId, yearMonth).run();
 }
 
 export async function updateShiftStatus(db: DB, storeId: number, yearMonth: string, newStatus: string): Promise<void> {

@@ -413,12 +413,47 @@ function onShow_shift_view() { ShiftView.init(); }
 var AdminShiftEdit = {
   yearMonth: '', schedules: [], staffList: [], requests: [], editingShiftId: null, editingDate: '',
   settings: {},
+  currentView: 'month',
+  weekOffset: 0,
+  selectedDay: '',
 
   init: function() {
     this.yearMonth = getNextMonthStr(); this.populateTimeSelects();
+    this.currentView = 'month'; this.weekOffset = 0; this.selectedDay = '';
+    this.updateViewButtons();
     var self = this;
-    Calendar.renderHeader('ase-month-header', this.yearMonth, function(newYM) { self.yearMonth = newYM; self.load(); });
+    Calendar.renderHeader('ase-month-header', this.yearMonth, function(newYM) { self.yearMonth = newYM; self.weekOffset = 0; self.load(); });
     this.load();
+  },
+
+  setView: function(view) {
+    this.currentView = view;
+    if (view === 'day' && !this.selectedDay) {
+      // デフォルトは今日か月初
+      var today = new Date();
+      var todayStr = today.getFullYear() + '-' + ('0' + (today.getMonth() + 1)).slice(-2) + '-' + ('0' + today.getDate()).slice(-2);
+      if (todayStr.substring(0, 7) === this.yearMonth) {
+        this.selectedDay = todayStr;
+      } else {
+        this.selectedDay = this.yearMonth + '-01';
+      }
+    }
+    this.updateViewButtons();
+    this.renderCurrentView();
+  },
+
+  updateViewButtons: function() {
+    var btns = ['month', 'week', 'day'];
+    for (var i = 0; i < btns.length; i++) {
+      var el = document.getElementById('view-' + btns[i] + '-btn');
+      if (el) { el.className = 'btn btn-sm view-btn' + (this.currentView === btns[i] ? ' active' : ''); }
+    }
+  },
+
+  renderCurrentView: function() {
+    if (this.currentView === 'week') { this.renderWeekView(); }
+    else if (this.currentView === 'day') { this.renderDayView(); }
+    else { this.renderMatrix(); }
   },
 
   populateTimeSelects: function() {
@@ -435,10 +470,12 @@ var AdminShiftEdit = {
   load: function() {
     var self = this; App.showLoading('シフトを読み込み中...');
     // getAllStaffを使ってposition情報を含むスタッフ一覧を取得する
-    Promise.all([API.getShiftSchedule(this.yearMonth), API.getAllStaff(), API.getAllRequests(this.yearMonth), API.getStoreSettings()]).then(function(results) {
+    Promise.all([API.getShiftSchedule(this.yearMonth), API.getAllStaff(), API.getAllRequests(this.yearMonth), API.getStoreSettings(), API.getRequestSummary(this.yearMonth)]).then(function(results) {
       App.hideLoading(); self.schedules = results[0]; self.staffList = results[1]; self.requests = results[2]; self.settings = results[3] || {};
+      var summary = results[4];
       Calendar.renderHeader('ase-month-header', self.yearMonth, function(newYM) { self.yearMonth = newYM; self.load(); });
-      self.renderMatrix();
+      self.renderRequestSummary(summary);
+      self.renderCurrentView();
       self.renderStaffHours();
     }).catch(function() { App.hideLoading(); App.showToast('読み込みに失敗しました', 'error'); });
   },
@@ -456,6 +493,14 @@ var AdminShiftEdit = {
     var reqMap = {};
     for (var ri = 0; ri < this.requests.length; ri++) { var r = this.requests[ri]; if (!reqMap[r.staffId]) reqMap[r.staffId] = {}; reqMap[r.staffId][r.date] = r; }
 
+    // 正社員を先にソート
+    function sortStaffPriority(a, b) {
+      var aFt = a.employmentType === '正社員' ? 0 : 1;
+      var bFt = b.employmentType === '正社員' ? 0 : 1;
+      if (aFt !== bFt) return aFt - bFt;
+      return (a.kana || a.name).localeCompare(b.kana || b.name);
+    }
+
     // ポジション別にスタッフをグループ化
     var hallStaff = [];
     var kitchenStaff = [];
@@ -467,6 +512,8 @@ var AdminShiftEdit = {
         hallStaff.push(this.staffList[pi]);
       }
     }
+    hallStaff.sort(sortStaffPriority);
+    kitchenStaff.sort(sortStaffPriority);
 
     // ポジション別の日ごと出勤人数を集計
     var dailyHallCount = {};
@@ -551,17 +598,17 @@ var AdminShiftEdit = {
         var totalH = staffHoursMap[staff.id] || 0;
         var hoursClass = 'hours-cell';
         if (staff.employmentType === '正社員') {
-          if (totalH > 80) {
+          if (totalH > 280) {
             hoursClass += ' hours-danger';
-          } else if (totalH > 60) {
+          } else if (totalH > 240) {
             hoursClass += ' hours-warning';
           } else {
             hoursClass += ' hours-ok';
           }
         }
         var hoursLabel = (Math.round(totalH * 10) / 10) + 'h';
-        // 正社員で60時間超の場合は1.3倍の印を追加
-        if (staff.employmentType === '正社員' && totalH > 60) {
+        // 正社員で残業60h超（月300h超）の場合は1.3倍の印を追加
+        if (staff.employmentType === '正社員' && totalH > 300) {
           hoursLabel += ' x1.3';
         }
         rowsHtml += '<td class="' + hoursClass + '">' + hoursLabel + '</td>';
@@ -621,7 +668,7 @@ var AdminShiftEdit = {
     document.getElementById('ase-modal-title').textContent = parseInt(parts[1]) + '/' + parseInt(parts[2]) + '(' + dayNames[d.getDay()] + ') シフト編集';
     this.populateStaffSelect(staffId);
     if (shift) { document.getElementById('ase-modal-start').value = shift.startTime; document.getElementById('ase-modal-end').value = shift.endTime; }
-    document.getElementById('ase-delete-btn').classList.remove('hidden'); App.showModal('ase-edit-modal');
+    document.getElementById('ase-delete-btn').classList.remove('hidden'); this.updateWorkHoursPreview(); App.showModal('ase-edit-modal');
   },
 
   addShift: function(dateStr, staffId) {
@@ -631,13 +678,43 @@ var AdminShiftEdit = {
     document.getElementById('ase-modal-title').textContent = parseInt(parts[1]) + '/' + parseInt(parts[2]) + '(' + dayNames[d.getDay()] + ') シフト追加';
     this.populateStaffSelect(staffId);
     document.getElementById('ase-modal-start').value = '11:00'; document.getElementById('ase-modal-end').value = '17:00';
-    document.getElementById('ase-delete-btn').classList.add('hidden'); App.showModal('ase-edit-modal');
+    document.getElementById('ase-delete-btn').classList.add('hidden'); this.updateWorkHoursPreview(); App.showModal('ase-edit-modal');
   },
 
   populateStaffSelect: function(selectedId) {
     var el = document.getElementById('ase-modal-staff'); el.innerHTML = '';
     for (var i = 0; i < this.staffList.length; i++) { var opt = document.createElement('option'); opt.value = this.staffList[i].id; opt.textContent = this.staffList[i].name; el.appendChild(opt); }
     if (selectedId) el.value = selectedId;
+  },
+
+  // クイック時間設定
+  setQuickTime: function(start, end) {
+    document.getElementById('ase-modal-start').value = start;
+    document.getElementById('ase-modal-end').value = end;
+    this.updateWorkHoursPreview();
+  },
+
+  // 労働時間プレビュー
+  updateWorkHoursPreview: function() {
+    var startEl = document.getElementById('ase-modal-start');
+    var endEl = document.getElementById('ase-modal-end');
+    var previewEl = document.getElementById('ase-work-hours-preview');
+    if (!startEl || !endEl || !previewEl) return;
+    var start = startEl.value;
+    var end = endEl.value;
+    if (!start || !end) { previewEl.textContent = ''; return; }
+    var sParts = start.split(':'); var eParts = end.split(':');
+    var startMin = parseInt(sParts[0]) * 60 + parseInt(sParts[1]);
+    var endMin = parseInt(eParts[0]) * 60 + parseInt(eParts[1]);
+    if (endMin <= startMin) endMin += 24 * 60;
+    var totalMin = endMin - startMin;
+    var totalH = totalMin / 60;
+    // 休憩計算（労基法: 6h超45分、8h超60分）
+    var breakMin = 0;
+    if (totalH > 8) breakMin = 60;
+    else if (totalH > 6) breakMin = 45;
+    var actualH = Math.round((totalMin - breakMin) / 60 * 10) / 10;
+    previewEl.innerHTML = '勤務: ' + totalH.toFixed(1) + 'h - 休憩: ' + breakMin + '分 = <span style="font-weight:bold;color:#4A3323">実働 ' + actualH + 'h</span>';
   },
 
   saveEntry: function() {
@@ -667,6 +744,46 @@ var AdminShiftEdit = {
       App.hideLoading(); App.hideModal('ase-edit-modal');
       if (result.success) { App.showToast('削除しました', 'success'); self.load(); } else { App.showToast(result.message, 'error'); }
     }).catch(function() { App.hideLoading(); App.showToast('削除に失敗しました', 'error'); });
+  },
+
+  // シフト希望の提出状況を表示
+  renderRequestSummary: function(summary) {
+    var el = document.getElementById('ase-request-summary');
+    if (!el || !summary) return;
+    var parts = this.yearMonth.split('-');
+    var month = parseInt(parts[1]);
+    var submitted = summary.submittedCount || 0;
+    var total = summary.totalStaff || 0;
+    var pct = total > 0 ? Math.round(submitted / total * 100) : 0;
+    var color = pct >= 100 ? '#2E7D32' : (pct >= 50 ? '#E65100' : '#C62828');
+    var html = '<div style="display:flex;align-items:center;gap:12px;padding:8px 12px;background:#FFF8E1;border-radius:8px;border:1px solid #FFE082">';
+    html += '<span style="font-size:13px">' + month + '月 シフト希望提出:</span>';
+    html += '<span style="font-weight:bold;color:' + color + ';font-size:15px">' + submitted + ' / ' + total + '人</span>';
+    html += '<span style="font-size:12px;color:#888">(' + pct + '%)</span>';
+    if (summary.notSubmitted && summary.notSubmitted.length > 0) {
+      var names = summary.notSubmitted.map(function(s) { return s.name; }).join(', ');
+      html += '<span style="font-size:11px;color:#C62828;margin-left:8px">未提出: ' + names + '</span>';
+    }
+    html += '</div>';
+    el.innerHTML = html;
+  },
+
+  // シフトを全クリア
+  clearShift: function() {
+    if (this.schedules.length === 0) {
+      App.showToast('クリアするシフトがありません', 'error');
+      return;
+    }
+    if (!App.confirm(this.yearMonth + 'のシフトを全てクリアしますか？\nこの操作は元に戻せません。')) return;
+    App.showLoading('クリア中...'); var self = this;
+    API.clearShift(this.yearMonth).then(function(result) {
+      App.hideLoading();
+      if (result.success) {
+        App.showToast(result.message, 'success');
+        document.getElementById('ase-warnings').innerHTML = '';
+        self.load();
+      } else { App.showToast(result.message, 'error'); }
+    }).catch(function() { App.hideLoading(); App.showToast('クリアに失敗しました', 'error'); });
   },
 
   autoGenerate: function() {
@@ -736,8 +853,8 @@ var AdminShiftEdit = {
       return;
     }
 
-    // プログレスバーの最大値（100時間を上限とする）
-    var maxHours = 100;
+    // プログレスバーの最大値（320時間を上限とする）
+    var maxHours = 320;
 
     var html = '<div class="fulltime-hours-card">';
     html += '<div style="font-weight:bold;font-size:16px;margin-bottom:12px;color:#4A3323">正社員 月間労働時間</div>';
@@ -748,31 +865,35 @@ var AdminShiftEdit = {
       var roundedH = Math.round(totalH * 10) / 10;
       var pos = staff.position || 'ホール';
 
-      // 状態判定
+      // 状態判定（240h基準、280h危険）
       var barClass = 'ok';
       var valueColor = '#2E7D32';
       var statusLabel = '';
-      if (totalH > 80) {
+      if (totalH > 280) {
         barClass = 'danger';
         valueColor = '#C62828';
         statusLabel = ' (危険)';
-      } else if (totalH > 60) {
+      } else if (totalH > 240) {
         barClass = 'warning';
         valueColor = '#E65100';
-        statusLabel = ' (注意 x1.3)';
+        var otHours = Math.round((totalH - 240) * 10) / 10;
+        statusLabel = ' (残業' + otHours + 'h)';
       }
 
       var widthPct = Math.min(Math.round(totalH / maxHours * 100), 100);
+      // 240hと280hのライン位置を計算
+      var line240 = Math.round(240 / maxHours * 100);
+      var line280 = Math.round(280 / maxHours * 100);
 
       html += '<div class="staff-row">';
       html += '<div class="staff-name">' + staff.name + '</div>';
       html += '<div class="staff-position">' + pos + '</div>';
       html += '<div class="hours-bar-bg">';
-      // 60時間ラインの表示
-      html += '<div class="limit-line" style="left:60%"><div class="limit-label" style="left:0">60h</div></div>';
-      // 80時間ラインの表示
-      html += '<div class="limit-line" style="left:80%"><div class="limit-label" style="left:0">80h</div></div>';
-      // プログレスバーの塗りつぶし
+      // 240時間ライン（基準）
+      html += '<div class="limit-line" style="left:' + line240 + '%"><div class="limit-label" style="left:0">240h</div></div>';
+      // 280時間ライン（危険）
+      html += '<div class="limit-line" style="left:' + line280 + '%"><div class="limit-label" style="left:0">280h</div></div>';
+      // プログレスバーの���りつぶし
       html += '<div class="hours-bar-fill ' + barClass + '" style="width:' + widthPct + '%"></div>';
       html += '</div>';
       html += '<div class="hours-value" style="color:' + valueColor + '">' + roundedH + 'h' + statusLabel + '</div>';
@@ -781,6 +902,179 @@ var AdminShiftEdit = {
 
     html += '</div>';
     container.innerHTML = html;
+  },
+
+  // 週表示
+  renderWeekView: function() {
+    var container = document.getElementById('ase-matrix');
+    var parts = this.yearMonth.split('-');
+    var year = parseInt(parts[0]); var month = parseInt(parts[1]);
+    var daysInMonth = new Date(year, month, 0).getDate();
+    var dayNames = ['日', '月', '火', '水', '木', '金', '土'];
+
+    // 週の開始日を計算（月曜始まり）
+    var firstDay = new Date(year, month - 1, 1);
+    var startOffset = firstDay.getDay() === 0 ? 6 : firstDay.getDay() - 1;
+    var weekStart = 1 - startOffset + (this.weekOffset * 7);
+    if (weekStart < 1) weekStart = 1;
+    var weekEnd = Math.min(weekStart + 6, daysInMonth);
+
+    // スタッフマップ
+    var schedMap = {};
+    for (var i = 0; i < this.schedules.length; i++) {
+      var s = this.schedules[i];
+      if (!schedMap[s.staffId]) schedMap[s.staffId] = {};
+      schedMap[s.staffId][s.date] = s;
+    }
+    var reqMap = {};
+    for (var ri = 0; ri < this.requests.length; ri++) {
+      var r = this.requests[ri];
+      if (!reqMap[r.staffId]) reqMap[r.staffId] = {};
+      reqMap[r.staffId][r.date] = r;
+    }
+
+    // 正社員ソート
+    function sortPriority(a, b) {
+      var aFt = a.employmentType === '正社員' ? 0 : 1;
+      var bFt = b.employmentType === '正社員' ? 0 : 1;
+      if (aFt !== bFt) return aFt - bFt;
+      return (a.kana || a.name).localeCompare(b.kana || b.name);
+    }
+    var sortedStaff = this.staffList.slice().sort(sortPriority);
+
+    // ナビゲーション
+    var self = this;
+    var html = '<div class="week-nav">';
+    html += '<button class="week-nav-btn" onclick="AdminShiftEdit.weekOffset--;AdminShiftEdit.renderWeekView()">&#9664;</button>';
+    html += '<span class="week-nav-label">' + month + '/' + weekStart + ' ~ ' + month + '/' + weekEnd + '</span>';
+    html += '<button class="week-nav-btn" onclick="AdminShiftEdit.weekOffset++;AdminShiftEdit.renderWeekView()">&#9654;</button>';
+    html += '</div>';
+
+    // テーブル
+    html += '<table class="week-view-table"><tr><th>スタッフ</th>';
+    for (var d = weekStart; d <= weekEnd; d++) {
+      if (d < 1 || d > daysInMonth) continue;
+      var dow = new Date(year, month - 1, d).getDay();
+      var dayStyle = dow === 0 ? ' style="color:#FFCDD2"' : (dow === 6 ? ' style="color:#90CAF9"' : '');
+      html += '<th' + dayStyle + '>' + d + '(' + dayNames[dow] + ')</th>';
+    }
+    html += '</tr>';
+
+    for (var si = 0; si < sortedStaff.length; si++) {
+      var staff = sortedStaff[si];
+      var nameLabel = (staff.employmentType === '正社員' ? '[社] ' : '') + staff.name;
+      html += '<tr><td class="time-col" style="text-align:left;font-size:12px">' + nameLabel + '</td>';
+      for (var day = weekStart; day <= weekEnd; day++) {
+        if (day < 1 || day > daysInMonth) { html += '<td></td>'; continue; }
+        var dateStr = this.yearMonth + '-' + ('0' + day).slice(-2);
+        var shift = (schedMap[staff.id] || {})[dateStr];
+        var req = (reqMap[staff.id] || {})[dateStr];
+        if (shift) {
+          html += '<td class="has-shift" onclick="AdminShiftEdit.editShift(\'' + shift.id + '\',\'' + dateStr + '\',\'' + staff.id + '\')" title="' + shift.startTime + '-' + shift.endTime + '">';
+          html += '<div style="font-size:12px;font-weight:bold">' + shift.startTime + '</div>';
+          html += '<div style="font-size:11px;color:#666">~' + shift.endTime + '</div>';
+          html += '<div style="font-size:10px;color:#888">' + (shift.workHours || 0) + 'h</div>';
+          html += '</td>';
+        } else if (req) {
+          var bgColor = req.type === '出勤希望' ? '#E3F2FD' : (req.type === '休み希望' ? '#FFEBEE' : '#FFF8E1');
+          html += '<td style="background:' + bgColor + ';cursor:pointer;font-size:11px" onclick="AdminShiftEdit.addShift(\'' + dateStr + '\',\'' + staff.id + '\')">';
+          html += req.type === '休み希望' ? '休' : (req.startTime || 'OK');
+          html += '</td>';
+        } else {
+          html += '<td style="cursor:pointer" onclick="AdminShiftEdit.addShift(\'' + dateStr + '\',\'' + staff.id + '\')"></td>';
+        }
+      }
+      html += '</tr>';
+    }
+    html += '</table>';
+    container.innerHTML = html;
+  },
+
+  // 日表示
+  renderDayView: function() {
+    var container = document.getElementById('ase-matrix');
+    if (!this.selectedDay) { this.selectedDay = this.yearMonth + '-01'; }
+    var parts = this.selectedDay.split('-');
+    var year = parseInt(parts[0]); var month = parseInt(parts[1]); var day = parseInt(parts[2]);
+    var daysInMonth = new Date(year, month, 0).getDate();
+    var dateObj = new Date(year, month - 1, day);
+    var dayNames = ['日', '月', '火', '水', '木', '金', '土'];
+
+    // ナビゲーション
+    var html = '<div class="week-nav">';
+    html += '<button class="week-nav-btn" onclick="AdminShiftEdit.prevDay()">&#9664;</button>';
+    html += '<span class="week-nav-label">' + month + '/' + day + '(' + dayNames[dateObj.getDay()] + ')</span>';
+    html += '<button class="week-nav-btn" onclick="AdminShiftEdit.nextDay()">&#9654;</button>';
+    html += '</div>';
+
+    // この日のシフト
+    var dayShifts = [];
+    for (var i = 0; i < this.schedules.length; i++) {
+      if (this.schedules[i].date === this.selectedDay) dayShifts.push(this.schedules[i]);
+    }
+
+    // スタッフマップ
+    var staffMap = {};
+    for (var si = 0; si < this.staffList.length; si++) { staffMap[this.staffList[si].id] = this.staffList[si]; }
+
+    // タイムライン（6時〜24時）
+    html += '<div class="day-view-timeline">';
+    for (var h = 6; h <= 23; h++) {
+      html += '<div class="day-view-hour">';
+      html += '<div class="day-view-hour-label">' + ('0' + h).slice(-2) + ':00</div>';
+      html += '<div class="day-view-slots">';
+      for (var si2 = 0; si2 < dayShifts.length; si2++) {
+        var shift = dayShifts[si2];
+        var shiftStart = parseInt(shift.startTime.split(':')[0]);
+        var shiftEnd = parseInt(shift.endTime.split(':')[0]);
+        if (shiftStart <= h && h < shiftEnd) {
+          var st = staffMap[shift.staffId];
+          var chipClass = 'day-view-chip' + ((st && st.position === 'キッチン') ? ' kitchen' : '');
+          var label = st ? st.name : shift.staffId;
+          if (h === shiftStart) {
+            label += ' ' + shift.startTime + '-' + shift.endTime;
+          }
+          html += '<span class="' + chipClass + '" onclick="AdminShiftEdit.editShift(\'' + shift.id + '\',\'' + this.selectedDay + '\',\'' + shift.staffId + '\')">' + label + '</span>';
+        }
+      }
+      html += '</div></div>';
+    }
+    html += '</div>';
+
+    // この日にシフトがないスタッフ（追加用）
+    var assignedIds = {};
+    for (var ai = 0; ai < dayShifts.length; ai++) { assignedIds[dayShifts[ai].staffId] = true; }
+    var unassigned = this.staffList.filter(function(s) { return !assignedIds[s.id]; });
+    if (unassigned.length > 0) {
+      html += '<div style="margin-top:12px;padding:8px;background:#FFF8E1;border-radius:8px">';
+      html += '<div style="font-size:12px;color:#888;margin-bottom:4px">未配置のスタッフ（クリックで追加）:</div>';
+      for (var ui = 0; ui < unassigned.length; ui++) {
+        html += '<span class="day-view-chip" style="margin:2px" onclick="AdminShiftEdit.addShift(\'' + this.selectedDay + '\',\'' + unassigned[ui].id + '\')">' + unassigned[ui].name + '</span>';
+      }
+      html += '</div>';
+    }
+
+    container.innerHTML = html;
+  },
+
+  prevDay: function() {
+    var parts = this.selectedDay.split('-');
+    var d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+    d.setDate(d.getDate() - 1);
+    if (d.getMonth() + 1 === parseInt(parts[1])) {
+      this.selectedDay = this.yearMonth + '-' + ('0' + d.getDate()).slice(-2);
+      this.renderDayView();
+    }
+  },
+
+  nextDay: function() {
+    var parts = this.selectedDay.split('-');
+    var d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+    d.setDate(d.getDate() + 1);
+    if (d.getMonth() + 1 === parseInt(parts[1])) {
+      this.selectedDay = this.yearMonth + '-' + ('0' + d.getDate()).slice(-2);
+      this.renderDayView();
+    }
   },
 
   // シフト表をExcelファイルとして出力する
@@ -988,10 +1282,10 @@ var AdminShiftEdit = {
             // 合計列
             sCell.font = {name: 'Yu Gothic', bold: true, size: 9};
             sCell.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: rowBg}};
-            if (typeof sCell.value === 'number' && sCell.value > 80) {
+            if (typeof sCell.value === 'number' && sCell.value > 280) {
               sCell.font = {name: 'Yu Gothic', bold: true, size: 9, color: {argb: C_RED_DARK}};
               sCell.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: C_RED_BG}};
-            } else if (typeof sCell.value === 'number' && sCell.value > 60) {
+            } else if (typeof sCell.value === 'number' && sCell.value > 240) {
               sCell.font = {name: 'Yu Gothic', bold: true, size: 9, color: {argb: C_ORANGE_TXT}};
               sCell.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: C_ORANGE_BG}};
             }
@@ -1244,6 +1538,7 @@ function onShow_admin_labor_cost() { LaborCost.init(); }
 
 var StoreSettings = {
   settings: {},
+  timeSlotStaffing: [],
 
   init: function() {
     var self = this;
@@ -1252,6 +1547,18 @@ var StoreSettings = {
     API.getStoreSettings().then(function(settings) {
       App.hideLoading();
       self.settings = settings || {};
+      // 時間帯別人数のJSON読み込み
+      try {
+        self.timeSlotStaffing = JSON.parse(settings['時間帯別必要人数'] || '[]');
+      } catch(e) { self.timeSlotStaffing = []; }
+      // デフォルトがなければ初期値を設定
+      if (self.timeSlotStaffing.length === 0) {
+        self.timeSlotStaffing = [
+          { start: '10:00', end: '14:00', weekdayHall: 5, weekdayKitchen: 3, weekendHall: 7, weekendKitchen: 4, label: 'ランチ' },
+          { start: '14:00', end: '17:00', weekdayHall: 2, weekdayKitchen: 1, weekendHall: 3, weekendKitchen: 2, label: '休憩帯' },
+          { start: '17:00', end: '22:00', weekdayHall: 5, weekdayKitchen: 3, weekendHall: 7, weekendKitchen: 4, label: 'ディナー' }
+        ];
+      }
       self.render();
     }).catch(function() {
       App.hideLoading();
@@ -1292,6 +1599,68 @@ var StoreSettings = {
     if (closeEl) closeEl.value = s['営業終了'] || '23:00';
     // 締切日
     document.getElementById('set-deadline-day').value = s['希望提出締切日'] || '20';
+    // 時間帯別人数
+    this.renderTimeSlots();
+  },
+
+  renderTimeSlots: function() {
+    var container = document.getElementById('time-slot-staffing-container');
+    if (!container) return;
+    var html = '';
+    for (var i = 0; i < this.timeSlotStaffing.length; i++) {
+      var slot = this.timeSlotStaffing[i];
+      html += '<div class="time-slot-row" style="border:1px solid #D7CCC8;border-radius:8px;padding:12px;margin-bottom:8px;background:#FAFAFA">';
+      html += '<div class="flex gap-8 mb-8" style="align-items:center">';
+      html += '<input type="text" class="form-input" style="width:80px;font-size:13px" value="' + (slot.label || '') + '" data-slot="' + i + '" data-field="label" placeholder="名前" onchange="StoreSettings.updateSlot(this)">';
+      html += '<select class="form-select" style="width:80px;font-size:13px" data-slot="' + i + '" data-field="start" onchange="StoreSettings.updateSlot(this)">';
+      html += StoreSettings.timeOptions(slot.start);
+      html += '</select>';
+      html += '<span>~</span>';
+      html += '<select class="form-select" style="width:80px;font-size:13px" data-slot="' + i + '" data-field="end" onchange="StoreSettings.updateSlot(this)">';
+      html += StoreSettings.timeOptions(slot.end);
+      html += '</select>';
+      html += '<button class="btn btn-outline btn-sm" style="color:#C62828;border-color:#C62828;padding:2px 8px;font-size:11px" onclick="StoreSettings.removeTimeSlot(' + i + ')">削除</button>';
+      html += '</div>';
+      html += '<div class="flex gap-8" style="flex-wrap:wrap">';
+      html += '<div style="font-size:11px;color:#888;width:100%">平日</div>';
+      html += '<div class="form-group" style="flex:1;margin:0"><label class="form-label" style="font-size:11px">ホール</label><input type="number" class="form-input" style="font-size:13px" min="0" max="30" value="' + (slot.weekdayHall || 0) + '" data-slot="' + i + '" data-field="weekdayHall" onchange="StoreSettings.updateSlot(this)"></div>';
+      html += '<div class="form-group" style="flex:1;margin:0"><label class="form-label" style="font-size:11px">キッチン</label><input type="number" class="form-input" style="font-size:13px" min="0" max="30" value="' + (slot.weekdayKitchen || 0) + '" data-slot="' + i + '" data-field="weekdayKitchen" onchange="StoreSettings.updateSlot(this)"></div>';
+      html += '<div style="font-size:11px;color:#888;width:100%;margin-top:4px">土日</div>';
+      html += '<div class="form-group" style="flex:1;margin:0"><label class="form-label" style="font-size:11px">ホール</label><input type="number" class="form-input" style="font-size:13px" min="0" max="30" value="' + (slot.weekendHall || 0) + '" data-slot="' + i + '" data-field="weekendHall" onchange="StoreSettings.updateSlot(this)"></div>';
+      html += '<div class="form-group" style="flex:1;margin:0"><label class="form-label" style="font-size:11px">キッチン</label><input type="number" class="form-input" style="font-size:13px" min="0" max="30" value="' + (slot.weekendKitchen || 0) + '" data-slot="' + i + '" data-field="weekendKitchen" onchange="StoreSettings.updateSlot(this)"></div>';
+      html += '</div></div>';
+    }
+    container.innerHTML = html;
+  },
+
+  timeOptions: function(selected) {
+    var html = '';
+    if (!App.timeSlots) return html;
+    for (var i = 0; i < App.timeSlots.length; i++) {
+      var sel = App.timeSlots[i] === selected ? ' selected' : '';
+      html += '<option value="' + App.timeSlots[i] + '"' + sel + '>' + App.timeSlots[i] + '</option>';
+    }
+    return html;
+  },
+
+  updateSlot: function(el) {
+    var idx = parseInt(el.getAttribute('data-slot'));
+    var field = el.getAttribute('data-field');
+    var val = el.value;
+    if (['weekdayHall','weekdayKitchen','weekendHall','weekendKitchen'].indexOf(field) >= 0) {
+      val = parseInt(val) || 0;
+    }
+    this.timeSlotStaffing[idx][field] = val;
+  },
+
+  addTimeSlot: function() {
+    this.timeSlotStaffing.push({ start: '11:00', end: '15:00', weekdayHall: 3, weekdayKitchen: 2, weekendHall: 5, weekendKitchen: 3, label: '' });
+    this.renderTimeSlots();
+  },
+
+  removeTimeSlot: function(idx) {
+    this.timeSlotStaffing.splice(idx, 1);
+    this.renderTimeSlots();
   },
 
   save: function() {
@@ -1302,7 +1671,8 @@ var StoreSettings = {
       '土日キッチン最低人数': document.getElementById('set-weekend-kitchen').value,
       '営業開始': document.getElementById('set-open-time').value,
       '営業終了': document.getElementById('set-close-time').value,
-      '希望提出締切日': document.getElementById('set-deadline-day').value
+      '希望提出締切日': document.getElementById('set-deadline-day').value,
+      '時間帯別必要人数': JSON.stringify(this.timeSlotStaffing)
     };
 
     App.showLoading('設定を保存中...');

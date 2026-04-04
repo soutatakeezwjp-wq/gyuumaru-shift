@@ -108,7 +108,7 @@ function setupSpreadsheet() {
  * 設定後はこの関数内のパスワード文字列を削除してください
  */
 function setupAdminPassword() {
-  var password = 'gyuumaru2026';  // ← ここを変更してから実行
+  var password = 'ここにパスワードを入力';  // ← ここを変更してから実行
   setAdminPassword(password);
   Logger.log('パスワードを設定しました！');
 }

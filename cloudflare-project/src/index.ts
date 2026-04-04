@@ -196,6 +196,14 @@ authed.delete('/admin/schedules/entry/:shiftId', async (c) => {
   return c.json(result);
 });
 
+// シフト全クリア
+authed.post('/admin/schedules/clear', async (c) => {
+  const storeId = c.get('storeId');
+  const body = await c.req.json<{ yearMonth: string }>();
+  const result = await shiftScheduleService.clearShift(c.env.DB, storeId, body.yearMonth);
+  return c.json(result);
+});
+
 // シフト確定
 authed.post('/admin/schedules/finalize', async (c) => {
   const storeId = c.get('storeId');

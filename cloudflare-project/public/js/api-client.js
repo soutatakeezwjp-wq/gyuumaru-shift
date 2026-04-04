@@ -124,6 +124,10 @@ var API = {
     return this._fetch('DELETE', '/admin/schedules/entry/' + shiftId);
   },
 
+  clearShift: function(yearMonth) {
+    return this._fetch('POST', '/admin/schedules/clear', { yearMonth: yearMonth });
+  },
+
   finalizeShift: function(yearMonth) {
     return this._fetch('POST', '/admin/schedules/finalize', { yearMonth: yearMonth });
   },
