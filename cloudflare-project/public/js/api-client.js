@@ -124,6 +124,14 @@ var API = {
     return this._fetch('DELETE', '/admin/schedules/entry/' + shiftId);
   },
 
+  resolveSurplus: function(yearMonth) {
+    return this._fetch('POST', '/admin/schedules/resolve-surplus', { yearMonth: yearMonth });
+  },
+
+  generateShortageText: function(yearMonth) {
+    return this._fetch('POST', '/admin/schedules/shortage-text', { yearMonth: yearMonth });
+  },
+
   clearShift: function(yearMonth) {
     return this._fetch('POST', '/admin/schedules/clear', { yearMonth: yearMonth });
   },

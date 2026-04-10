@@ -74,7 +74,7 @@ var App = {
 
       var backBtn = document.getElementById('back-btn');
       if (backBtn) {
-        if (screenId === 'store-select' || screenId === 'staff-select' || screenId === 'admin-login') {
+        if (screenId === 'store-select' || screenId === 'staff-select') {
           backBtn.classList.add('hidden');
         } else {
           backBtn.classList.remove('hidden');
@@ -107,6 +107,9 @@ var App = {
       }
     } else {
       switch (this.currentScreen) {
+        case 'admin-login':
+          this.showScreen('mode-select');
+          break;
         case 'admin-dashboard':
           this.showScreen('admin-login');
           break;

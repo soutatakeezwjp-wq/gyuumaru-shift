@@ -19,6 +19,19 @@ export interface StoreSettings {
   [key: string]: string;
 }
 
+// 時間帯別必要人数
+export interface TimeSlotStaffing {
+  start: string;
+  end: string;
+  hall: number;
+  kitchen: number;
+  label?: string;
+  weekdayHall?: number;
+  weekdayKitchen?: number;
+  weekendHall?: number;
+  weekendKitchen?: number;
+}
+
 // 店舗情報（フロントエンド向け）
 export interface StoreInfo {
   storeName: string;
@@ -38,6 +51,7 @@ export interface StoreInfo {
   weekendKitchenMin: number;
   fulltimeMonthlyLimit: number;
   requestDeadlineDay: number;
+  timeSlotStaffing: TimeSlotStaffing[];
 }
 
 // スタッフ

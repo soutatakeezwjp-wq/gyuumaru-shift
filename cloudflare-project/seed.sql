@@ -42,6 +42,9 @@ INSERT OR IGNORE INTO store_settings (store_id, key, value) SELECT id, '土日�
 -- 正社員の月間上限時間
 INSERT OR IGNORE INTO store_settings (store_id, key, value) SELECT id, '正社員月間上限時間', '60' FROM stores;
 
+-- 時間帯別必要人数（JSON: 平日/土日別）
+INSERT OR IGNORE INTO store_settings (store_id, key, value) SELECT id, '時間帯別必要人数', '[{"start":"10:00","end":"14:00","weekdayHall":4,"weekdayKitchen":3,"weekendHall":4,"weekendKitchen":3,"label":"ランチ"},{"start":"14:00","end":"17:00","weekdayHall":1,"weekdayKitchen":1,"weekendHall":1,"weekendKitchen":1,"label":"つなぎ"},{"start":"17:00","end":"22:00","weekdayHall":4,"weekdayKitchen":3,"weekendHall":4,"weekendKitchen":3,"label":"ディナー"}]' FROM stores;
+
 -- 嬉野本店(store_id=1)のダミースタッフ20人
 
 -- ホール正社員(2人)

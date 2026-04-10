@@ -204,6 +204,22 @@ authed.post('/admin/schedules/clear', async (c) => {
   return c.json(result);
 });
 
+// 余剰自動解消
+authed.post('/admin/schedules/resolve-surplus', async (c) => {
+  const storeId = c.get('storeId');
+  const body = await c.req.json<{ yearMonth: string }>();
+  const result = await shiftScheduleService.resolveSurplus(c.env.DB, storeId, body.yearMonth);
+  return c.json(result);
+});
+
+// 人員不足テキスト自動生成（LINE配信用）
+authed.post('/admin/schedules/shortage-text', async (c) => {
+  const storeId = c.get('storeId');
+  const body = await c.req.json<{ yearMonth: string }>();
+  const result = await shiftScheduleService.generateShortageText(c.env.DB, storeId, body.yearMonth);
+  return c.json(result);
+});
+
 // シフト確定
 authed.post('/admin/schedules/finalize', async (c) => {
   const storeId = c.get('storeId');

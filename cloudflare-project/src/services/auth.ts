@@ -3,7 +3,7 @@
 import * as dao from '../db/dao';
 import { SETTING_KEYS } from '../config';
 import { hashPassword } from '../utils';
-import type { StaffListItem, StoreInfo } from '../types';
+import type { StaffListItem, StoreInfo, TimeSlotStaffing } from '../types';
 
 // スタッフ選択画面用の一覧を取得する（ID, 名前, フリガナのみ）
 export async function getStaffList(db: D1Database, storeId: number): Promise<StaffListItem[]> {
@@ -49,7 +49,30 @@ export async function getCurrentStoreInfo(db: D1Database, storeId: number): Prom
     weekendKitchenMin: parseInt(settings[SETTING_KEYS.WEEKEND_KITCHEN_MIN]) || 4,
     fulltimeMonthlyLimit: parseInt(settings[SETTING_KEYS.FULLTIME_MONTHLY_LIMIT]) || 60,
     requestDeadlineDay: parseInt(settings[SETTING_KEYS.REQUEST_DEADLINE_DAY]) || 20,
+    timeSlotStaffing: parseTimeSlotStaffing(settings[SETTING_KEYS.TIME_SLOT_STAFFING]),
   };
+}
+
+// 時間帯別必要人数のJSON文字列をパースする
+function parseTimeSlotStaffing(json: string | undefined): TimeSlotStaffing[] {
+  const defaults: TimeSlotStaffing[] = [
+    { start: '10:00', end: '14:00', hall: 4, kitchen: 3, weekdayHall: 4, weekdayKitchen: 3, weekendHall: 4, weekendKitchen: 3, label: 'ランチ' },
+    { start: '14:00', end: '17:00', hall: 1, kitchen: 1, weekdayHall: 1, weekdayKitchen: 1, weekendHall: 1, weekendKitchen: 1, label: 'つなぎ' },
+    { start: '17:00', end: '22:00', hall: 4, kitchen: 3, weekdayHall: 4, weekdayKitchen: 3, weekendHall: 4, weekendKitchen: 3, label: 'ディナー' },
+  ];
+  if (!json) return defaults;
+  try {
+    const parsed = JSON.parse(json);
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      // hall/kitchenフィールドがない場合はweekday値をフォールバック
+      return parsed.map((s: TimeSlotStaffing) => ({
+        ...s,
+        hall: s.hall ?? s.weekdayHall ?? 3,
+        kitchen: s.kitchen ?? s.weekdayKitchen ?? 2,
+      }));
+    }
+  } catch {}
+  return defaults;
 }
 
 // シフト希望の受付期間中かどうかを判定する

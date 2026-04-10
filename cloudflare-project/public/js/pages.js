@@ -413,47 +413,304 @@ function onShow_shift_view() { ShiftView.init(); }
 var AdminShiftEdit = {
   yearMonth: '', schedules: [], staffList: [], requests: [], editingShiftId: null, editingDate: '',
   settings: {},
-  currentView: 'month',
+  currentView: 'gantt',
   weekOffset: 0,
   selectedDay: '',
+  currentStep: 1,
 
   init: function() {
     this.yearMonth = getNextMonthStr(); this.populateTimeSelects();
-    this.currentView = 'month'; this.weekOffset = 0; this.selectedDay = '';
-    this.updateViewButtons();
+    this.currentView = 'gantt'; this.weekOffset = 0; this.selectedDay = '';
+    this.currentStep = 1;
+    this.renderWorkflow();
+    // Step1パネルを表示（データなしの状態で先に見せる）
+    for (var i = 1; i <= 4; i++) {
+      var panel = document.getElementById('ase-step-' + i);
+      if (panel) panel.classList.toggle('hidden', i !== 1);
+    }
     var self = this;
     Calendar.renderHeader('ase-month-header', this.yearMonth, function(newYM) { self.yearMonth = newYM; self.weekOffset = 0; self.load(); });
+    // loadがStep1も描画するので、loadだけ呼ぶ
     this.load();
   },
 
-  setView: function(view) {
-    this.currentView = view;
-    if (view === 'day' && !this.selectedDay) {
-      // デフォルトは今日か月初
-      var today = new Date();
-      var todayStr = today.getFullYear() + '-' + ('0' + (today.getMonth() + 1)).slice(-2) + '-' + ('0' + today.getDate()).slice(-2);
-      if (todayStr.substring(0, 7) === this.yearMonth) {
-        this.selectedDay = todayStr;
-      } else {
-        this.selectedDay = this.yearMonth + '-01';
+  // ステップ型ワークフロー（4ステップ）
+  goToStep: function(step) {
+    this.currentStep = step;
+    this.renderWorkflow();
+    for (var i = 1; i <= 4; i++) {
+      var panel = document.getElementById('ase-step-' + i);
+      if (panel) panel.classList.toggle('hidden', i !== step);
+    }
+    if (step === 1) { this.renderStep1(); }
+    else if (step === 2) { this.load(); }
+    else if (step === 3) { this.load(); }
+    else if (step === 4) { this.load(); }
+    window.scrollTo(0, 0);
+  },
+
+  renderWorkflow: function() {
+    for (var i = 1; i <= 4; i++) {
+      var el = document.getElementById('wf-step-' + i);
+      if (!el) continue;
+      el.className = 'workflow-step';
+      if (i === this.currentStep) el.classList.add('active');
+      else if (i < this.currentStep) el.classList.add('done');
+    }
+  },
+
+  // 全スタッフの希望をクリアする
+  clearAllRequests: function() {
+    if (!App.confirm('全スタッフのシフト希望をクリアしますか？')) return;
+    App.showLoading('希望をクリア中...');
+    var self = this;
+    var promises = [];
+    for (var si = 0; si < this.staffList.length; si++) {
+      promises.push(API.submitShiftRequests(this.staffList[si].id, this.yearMonth, []));
+    }
+    Promise.all(promises).then(function() {
+      App.hideLoading();
+      App.showToast('全スタッフの希望をクリアしました', 'success');
+      self.load();
+    }).catch(function() { App.hideLoading(); App.showToast('クリアに失敗しました', 'error'); });
+  },
+
+  // ダミーのシフト希望を投入する
+  insertDummyRequests: function() {
+    if (!App.confirm('テスト用のダミー希望データを全スタッフ分投入しますか？')) return;
+    App.showLoading('ダミー希望を投入中...');
+    var self = this;
+    var parts = this.yearMonth.split('-');
+    var year = parseInt(parts[0]); var month = parseInt(parts[1]);
+    var daysInMonth = new Date(year, month, 0).getDate();
+    // 完全ランダムなダミーデータ生成
+    var timeOptions = ['09:00','09:30','10:00','10:30','11:00','11:30','12:00'];
+    var endOptions = ['14:00','14:30','15:00','16:00','17:00','18:00','19:00','20:00','21:00','21:30','22:00','22:00','22:00'];
+    var promises = [];
+    for (var si = 0; si < this.staffList.length; si++) {
+      var staff = this.staffList[si];
+      var requests = [];
+      // スタッフごとの出勤率をランダムに（50%〜90%）
+      var workRate = 0.5 + Math.random() * 0.4;
+
+      for (var d = 1; d <= daysInMonth; d++) {
+        var dateStr = this.yearMonth + '-' + ('0' + d).slice(-2);
+
+        // この日に出勤するかどうか
+        if (Math.random() > workRate) continue;
+
+        // 開始・終了を完全にランダム
+        var startTime, endTime;
+        if (staff.employmentType === '正社員') {
+          // 正社員は通し希望が多いが、たまに短め
+          if (Math.random() < 0.7) {
+            startTime = '10:00'; endTime = '22:00';
+          } else {
+            startTime = Math.random() < 0.5 ? '10:00' : '14:00';
+            endTime = Math.random() < 0.5 ? '17:00' : '22:00';
+          }
+        } else {
+          // アルバイトは完全ランダム
+          startTime = timeOptions[Math.floor(Math.random() * timeOptions.length)];
+          endTime = endOptions[Math.floor(Math.random() * endOptions.length)];
+          // 開始 < 終了を保証、最低2時間
+          var sMin = parseInt(startTime.split(':')[0]) * 60 + parseInt(startTime.split(':')[1]);
+          var eMin = parseInt(endTime.split(':')[0]) * 60 + parseInt(endTime.split(':')[1]);
+          if (eMin - sMin < 120) endTime = '22:00';
+        }
+        requests.push({ date: dateStr, type: '出勤希望', startTime: startTime, endTime: endTime });
+      }
+      promises.push(API.submitShiftRequests(staff.id, this.yearMonth, requests));
+    }
+    Promise.all(promises).then(function() {
+      App.hideLoading();
+      App.showToast(self.staffList.length + '名分のダミー希望を投入しました！ Step2に進んで自動配置してください', 'success');
+      self.currentStep = 1;
+      self.load();
+    }).catch(function() {
+      App.hideLoading();
+      App.showToast('ダミー投入に失敗しました', 'error');
+    });
+  },
+
+  renderStep1: function() {
+    // 希望確認: カレンダーに提出状況を表示
+    var container = document.getElementById('ase-step1-calendar');
+    if (!container) return;
+    if (this.requests.length === 0 && this.staffList.length === 0) {
+      container.innerHTML = '<div class="alert alert-info">データを読み込み中...</div>';
+      return;
+    }
+    // 日別の希望集計
+    var parts = this.yearMonth.split('-');
+    var year = parseInt(parts[0]); var month = parseInt(parts[1]);
+    var daysInMonth = new Date(year, month, 0).getDate();
+    var dayNames = ['日', '月', '火', '水', '木', '金', '土'];
+
+    // 必要人数を取得
+    var timeSlots = [];
+    try { timeSlots = JSON.parse(this.settings['時間帯別必要人数'] || '[]'); } catch(e) {}
+    var maxNeeded = 0;
+    for (var ti = 0; ti < timeSlots.length; ti++) {
+      var s = timeSlots[ti];
+      var need = (s.weekdayHall || s.hall || 0) + (s.weekdayKitchen || s.kitchen || 0);
+      if (need > maxNeeded) maxNeeded = need;
+    }
+
+    var html = '<div class="table-wrapper"><table class="data-table"><tr><th>日付</th><th>曜日</th><th>出勤希望</th><th>状況</th></tr>';
+    for (var d = 1; d <= daysInMonth; d++) {
+      var dateStr = this.yearMonth + '-' + ('0' + d).slice(-2);
+      var dow = new Date(year, month - 1, d).getDay();
+      var work = 0;
+      for (var ri = 0; ri < this.requests.length; ri++) {
+        if (this.requests[ri].date === dateStr && this.requests[ri].type !== '休み希望') work++;
+      }
+      var dayClass = dow === 0 ? ' style="color:#C62828"' : (dow === 6 ? ' style="color:#1565C0"' : '');
+      // 必要人数との比較
+      var statusHtml = '';
+      if (maxNeeded > 0) {
+        if (work >= maxNeeded) statusHtml = '<span style="color:#2E7D32">充足</span>';
+        else if (work >= maxNeeded * 0.7) statusHtml = '<span style="color:#E65100">やや少なめ</span>';
+        else statusHtml = '<span style="color:#C62828;font-weight:bold">不足!</span>';
+      }
+      html += '<tr><td>' + d + '日</td><td' + dayClass + '>' + dayNames[dow] + '</td>';
+      html += '<td style="color:#2E7D32;font-weight:bold;font-size:16px">' + work + '名</td>';
+      html += '<td>' + statusHtml + '</td></tr>';
+    }
+    html += '</table></div>';
+    container.innerHTML = html;
+  },
+
+  renderShortageSummary: function() {
+    // Step 4: 時間帯別の過不足を可視化
+    var container = document.getElementById('ase-shortage-summary');
+    if (!container) return;
+
+    var timeSlots = [];
+    try { timeSlots = JSON.parse(this.settings['時間帯別必要人数'] || '[]'); } catch(e) {}
+    if (timeSlots.length === 0) {
+      container.innerHTML = '<div class="alert alert-info">時間帯設定がありません。店舗設定から設定してください。</div>';
+      return;
+    }
+
+    var parts = this.yearMonth.split('-');
+    var year = parseInt(parts[0]); var month = parseInt(parts[1]);
+    var daysInMonth = new Date(year, month, 0).getDate();
+    var dayNames = ['日', '月', '火', '水', '木', '金', '土'];
+
+    // スタッフマップ
+    var staffMap = {};
+    for (var si = 0; si < this.staffList.length; si++) staffMap[this.staffList[si].id] = this.staffList[si];
+
+    // スケジュールマップ
+    var schedByDate = {};
+    for (var i = 0; i < this.schedules.length; i++) {
+      var s = this.schedules[i];
+      if (!schedByDate[s.date]) schedByDate[s.date] = [];
+      schedByDate[s.date].push(s);
+    }
+
+    var html = '';
+    var totalShort = 0;
+
+    for (var d = 1; d <= daysInMonth; d++) {
+      var dateStr = this.yearMonth + '-' + ('0' + d).slice(-2);
+      var dow = new Date(year, month - 1, d).getDay();
+      var isWeekend = (dow === 0 || dow === 6);
+      var dayLabel = d + '日(' + dayNames[dow] + ')';
+      var dayShifts = schedByDate[dateStr] || [];
+      var dayHasShortage = false;
+      var slotsHtml = '';
+
+      for (var ts = 0; ts < timeSlots.length; ts++) {
+        var slot = timeSlots[ts];
+        var slotLabel = (slot.label || '') + ' ' + slot.start + '-' + slot.end;
+        var hallNeeded = isWeekend ? (slot.weekendHall || slot.hall || 0) : (slot.weekdayHall || slot.hall || 0);
+        var kitchenNeeded = isWeekend ? (slot.weekendKitchen || slot.kitchen || 0) : (slot.weekdayKitchen || slot.kitchen || 0);
+
+        var slotStartMin = parseInt(slot.start.split(':')[0]) * 60 + parseInt(slot.start.split(':')[1]);
+        var slotEndMin = parseInt(slot.end.split(':')[0]) * 60 + parseInt(slot.end.split(':')[1]);
+
+        var hallActual = 0, kitchenActual = 0;
+        for (var di = 0; di < dayShifts.length; di++) {
+          var sh = dayShifts[di];
+          var shStart = parseInt(sh.startTime.split(':')[0]) * 60 + parseInt(sh.startTime.split(':')[1]);
+          var shEnd = parseInt(sh.endTime.split(':')[0]) * 60 + parseInt(sh.endTime.split(':')[1]);
+          if (shStart <= slotStartMin && shEnd >= slotEndMin) {
+            var st = staffMap[sh.staffId];
+            if (st && st.position === 'キッチン') kitchenActual++;
+            else hallActual++;
+          }
+        }
+
+        var hallOk = hallActual >= hallNeeded;
+        var kitchenOk = kitchenActual >= kitchenNeeded;
+        if (!hallOk || !kitchenOk) dayHasShortage = true;
+        if (!hallOk) totalShort++;
+        if (!kitchenOk) totalShort++;
+
+        // ホール
+        var hPct = hallNeeded > 0 ? Math.min(Math.round(hallActual / hallNeeded * 100), 100) : 100;
+        slotsHtml += '<div class="shortage-slot ' + (hallOk ? 'ok' : 'short') + '">';
+        slotsHtml += '<div class="shortage-slot-time">' + slotLabel + '</div>';
+        slotsHtml += '<div style="min-width:50px;font-size:11px">ホール</div>';
+        slotsHtml += '<div class="shortage-slot-bar"><div class="shortage-slot-fill ' + (hallOk ? 'ok' : 'short') + '" style="width:' + hPct + '%"></div></div>';
+        slotsHtml += '<div class="shortage-slot-label" style="color:' + (hallOk ? '#2E7D32' : '#C62828') + '">' + hallActual + ' / ' + hallNeeded + '人</div>';
+        slotsHtml += '</div>';
+        // キッチン
+        var kPct = kitchenNeeded > 0 ? Math.min(Math.round(kitchenActual / kitchenNeeded * 100), 100) : 100;
+        slotsHtml += '<div class="shortage-slot ' + (kitchenOk ? 'ok' : 'short') + '">';
+        slotsHtml += '<div class="shortage-slot-time"></div>';
+        slotsHtml += '<div style="min-width:50px;font-size:11px">キッチン</div>';
+        slotsHtml += '<div class="shortage-slot-bar"><div class="shortage-slot-fill ' + (kitchenOk ? 'ok' : 'short') + '" style="width:' + kPct + '%"></div></div>';
+        slotsHtml += '<div class="shortage-slot-label" style="color:' + (kitchenOk ? '#2E7D32' : '#C62828') + '">' + kitchenActual + ' / ' + kitchenNeeded + '人</div>';
+        slotsHtml += '</div>';
+      }
+
+      if (dayHasShortage) {
+        var dayStyle = dow === 0 ? 'color:#C62828' : (dow === 6 ? 'color:#1565C0' : '');
+        html += '<div class="shortage-card">';
+        html += '<div class="shortage-card-header"><span style="' + dayStyle + '">' + month + '/' + dayLabel + '</span><span style="color:#C62828;font-size:12px">不足あり</span></div>';
+        html += slotsHtml;
+        html += '</div>';
       }
     }
-    this.updateViewButtons();
-    this.renderCurrentView();
+
+    if (totalShort === 0) {
+      html = '<div class="alert alert-success" style="text-align:center;font-size:16px;padding:24px">全ての日・全ての時間帯で人員が充足しています！</div>';
+    } else {
+      html = '<div class="alert alert-warning mb-16" style="text-align:center">' + totalShort + '件の不足があります（不足のある日だけ表示）</div>' + html;
+    }
+    container.innerHTML = html;
   },
 
-  updateViewButtons: function() {
-    var btns = ['month', 'week', 'day'];
-    for (var i = 0; i < btns.length; i++) {
-      var el = document.getElementById('view-' + btns[i] + '-btn');
-      if (el) { el.className = 'btn btn-sm view-btn' + (this.currentView === btns[i] ? ' active' : ''); }
-    }
+  renderFinalSummary: function() {
+    var container = document.getElementById('ase-final-summary');
+    if (!container) return;
+    var totalStaff = this.staffList.length;
+    var scheduledStaff = {};
+    var totalShifts = this.schedules.length;
+    for (var i = 0; i < this.schedules.length; i++) scheduledStaff[this.schedules[i].staffId] = true;
+    var uniqueStaff = Object.keys(scheduledStaff).length;
+
+    var html = '<div class="card" style="text-align:center;padding:24px">';
+    html += '<div style="font-size:48px;margin-bottom:16px">&#9989;</div>';
+    html += '<div style="font-size:18px;font-weight:bold;color:#4A3323;margin-bottom:16px">シフト確定の準備ができました</div>';
+    html += '<div class="flex gap-16" style="justify-content:center;flex-wrap:wrap">';
+    html += '<div><div class="text-muted text-sm">シフト件数</div><div class="text-lg text-bold">' + totalShifts + '件</div></div>';
+    html += '<div><div class="text-muted text-sm">配置スタッフ</div><div class="text-lg text-bold">' + uniqueStaff + ' / ' + totalStaff + '人</div></div>';
+    html += '</div></div>';
+    container.innerHTML = html;
   },
+
+  setView: function() {
+    this.renderGanttWeekView();
+  },
+
+  updateViewButtons: function() {},
 
   renderCurrentView: function() {
-    if (this.currentView === 'week') { this.renderWeekView(); }
-    else if (this.currentView === 'day') { this.renderDayView(); }
-    else { this.renderMatrix(); }
+    this.renderGanttWeekView();
   },
 
   populateTimeSelects: function() {
@@ -475,8 +732,24 @@ var AdminShiftEdit = {
       var summary = results[4];
       Calendar.renderHeader('ase-month-header', self.yearMonth, function(newYM) { self.yearMonth = newYM; self.load(); });
       self.renderRequestSummary(summary);
-      self.renderCurrentView();
-      self.renderStaffHours();
+      // ステップに応じた描画
+      if (self.currentStep === 1) {
+        self.renderStep1();
+      } else if (self.currentStep === 2) {
+        if (self.schedules.length === 0) {
+          var m = document.getElementById('ase-matrix');
+          if (m) m.innerHTML = '<div style="text-align:center;padding:40px;color:#888"><div style="font-size:48px;margin-bottom:16px">&#9757;</div><div style="font-size:16px">まだシフトがありません。<br>上の「<b>自動配置する</b>」ボタンを押してください。</div></div>';
+          var h = document.getElementById('ase-staff-hours');
+          if (h) h.innerHTML = '';
+        } else {
+          self.renderGanttWeekView();
+          self.renderStaffHours();
+        }
+      } else if (self.currentStep === 3) {
+        self.renderShortageSummary();
+      } else if (self.currentStep === 4) {
+        self.renderFinalSummary();
+      }
     }).catch(function() { App.hideLoading(); App.showToast('読み込みに失敗しました', 'error'); });
   },
 
@@ -660,6 +933,8 @@ var AdminShiftEdit = {
   },
 
   editShift: function(shiftId, dateStr, staffId) {
+    // ドラッグ直後のクリックではモーダルを開かない
+    if (this._dragJustFinished) return;
     this.editingShiftId = shiftId; this.editingDate = dateStr;
     var shift = null;
     for (var i = 0; i < this.schedules.length; i++) { if (this.schedules[i].id === shiftId) { shift = this.schedules[i]; break; } }
@@ -807,6 +1082,27 @@ var AdminShiftEdit = {
     });
   },
 
+  resolveSurplus: function() {
+    if (this.schedules.length === 0) {
+      App.showToast('先に自動配置を実行してください', 'error');
+      return;
+    }
+    App.showLoading('余剰を解消中...'); var self = this;
+    API.resolveSurplus(this.yearMonth).then(function(result) {
+      App.hideLoading();
+      if (result.success) {
+        var msg = result.message;
+        if (result.changes && result.changes.length > 0) {
+          msg += '\n\n変更内容:\n' + result.changes.slice(0, 5).join('\n');
+          if (result.changes.length > 5) msg += '\n... 他' + (result.changes.length - 5) + '件';
+        }
+        App.showToast(result.message, 'success');
+        // 強制的にデータ再読み込み＆再描画
+        self.goToStep(2);
+      } else { App.showToast(result.message || '失敗しました', 'error'); }
+    }).catch(function() { App.hideLoading(); App.showToast('余剰解消に失敗しました', 'error'); });
+  },
+
   finalizeShift: function() {
     if (this.schedules.length === 0) {
       App.showToast('シフトがまだ作成されていません。先に「自動作成」ボタンを押してください。', 'error');
@@ -832,67 +1128,65 @@ var AdminShiftEdit = {
     var container = document.getElementById('ase-staff-hours');
     if (!container) return;
 
-    // 各スタッフの月間合計時間を計算
     var staffHoursMap = {};
+    var staffDaysMap = {};
     for (var i = 0; i < this.schedules.length; i++) {
       var sc = this.schedules[i];
-      if (!staffHoursMap[sc.staffId]) staffHoursMap[sc.staffId] = 0;
+      if (!staffHoursMap[sc.staffId]) { staffHoursMap[sc.staffId] = 0; staffDaysMap[sc.staffId] = 0; }
       staffHoursMap[sc.staffId] += (sc.workHours || 0);
+      staffDaysMap[sc.staffId]++;
     }
 
-    // 正社員だけをピックアップ
-    var fulltimeStaff = [];
+    var ftStaff = [];
+    var ptStaff = [];
     for (var fi = 0; fi < this.staffList.length; fi++) {
-      if (this.staffList[fi].employmentType === '正社員') {
-        fulltimeStaff.push(this.staffList[fi]);
+      if (this.staffList[fi].employmentType === '正社員') ftStaff.push(this.staffList[fi]);
+      else ptStaff.push(this.staffList[fi]);
+    }
+
+    var html = '<div style="background:#fff;border:1px solid #E8E0D8;border-radius:12px;padding:12px;font-size:12px">';
+    html += '<div style="font-weight:bold;font-size:14px;color:#4A3323;margin-bottom:8px;text-align:center">月間稼働時間</div>';
+
+    function renderStaffGroup(group, label) {
+      var h = '<div style="font-weight:bold;color:#8D6E63;font-size:11px;margin:8px 0 4px;border-bottom:1px solid #E8E0D8;padding-bottom:2px">' + label + '</div>';
+      for (var si = 0; si < group.length; si++) {
+        var s = group[si];
+        var totalH = Math.round((staffHoursMap[s.id] || 0) * 10) / 10;
+        var days = staffDaysMap[s.id] || 0;
+        var posL = s.position === 'キッチン' ? 'K' : 'H';
+        var color = '#4A3323';
+        var warn = '';
+        if (s.employmentType === '正社員') {
+          if (totalH > 280) { color = '#C62828'; warn = ' !!'; }
+          else if (totalH > 240) { color = '#E65100'; warn = ' !'; }
+        }
+        h += '<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px dotted #F0E8DC">';
+        h += '<span>' + s.name + '<span style="color:#888;font-size:9px"> ' + posL + '</span></span>';
+        h += '<span style="font-weight:bold;color:' + color + '">' + totalH + 'h' + warn + ' <span style="color:#888;font-size:9px">' + days + '日</span></span>';
+        h += '</div>';
       }
+      return h;
     }
 
-    if (fulltimeStaff.length === 0) {
-      container.innerHTML = '';
-      return;
-    }
+    if (ftStaff.length > 0) html += renderStaffGroup(ftStaff, '正社員');
+    if (ptStaff.length > 0) html += renderStaffGroup(ptStaff, 'アルバイト');
 
-    // プログレスバーの最大値（320時間を上限とする）
+    html += '</div>';
+    // 以下は不要（旧プログレスバーコード互換）
+    container.innerHTML = html;
+    return; // 早期リターン
+
+    var fulltimeStaff = ftStaff;
     var maxHours = 320;
-
-    var html = '<div class="fulltime-hours-card">';
-    html += '<div style="font-weight:bold;font-size:16px;margin-bottom:12px;color:#4A3323">正社員 月間労働時間</div>';
-
-    for (var si = 0; si < fulltimeStaff.length; si++) {
-      var staff = fulltimeStaff[si];
-      var totalH = staffHoursMap[staff.id] || 0;
-      var roundedH = Math.round(totalH * 10) / 10;
+    var fakeHtml = '';
+    for (var ssi = 0; ssi < fulltimeStaff.length; ssi++) {
+      var staff = fulltimeStaff[ssi];
+      var totalH2 = staffHoursMap[staff.id] || 0;
+      var roundedH = Math.round(totalH2 * 10) / 10;
       var pos = staff.position || 'ホール';
-
-      // 状態判定（240h基準、280h危険）
-      var barClass = 'ok';
-      var valueColor = '#2E7D32';
-      var statusLabel = '';
-      if (totalH > 280) {
-        barClass = 'danger';
-        valueColor = '#C62828';
-        statusLabel = ' (危険)';
-      } else if (totalH > 240) {
-        barClass = 'warning';
-        valueColor = '#E65100';
-        var otHours = Math.round((totalH - 240) * 10) / 10;
-        statusLabel = ' (残業' + otHours + 'h)';
-      }
-
-      var widthPct = Math.min(Math.round(totalH / maxHours * 100), 100);
-      // 240hと280hのライン位置を計算
-      var line240 = Math.round(240 / maxHours * 100);
-      var line280 = Math.round(280 / maxHours * 100);
-
-      html += '<div class="staff-row">';
-      html += '<div class="staff-name">' + staff.name + '</div>';
-      html += '<div class="staff-position">' + pos + '</div>';
-      html += '<div class="hours-bar-bg">';
-      // 240時間ライン（基準）
-      html += '<div class="limit-line" style="left:' + line240 + '%"><div class="limit-label" style="left:0">240h</div></div>';
-      // 280時間ライン（危険）
-      html += '<div class="limit-line" style="left:' + line280 + '%"><div class="limit-label" style="left:0">280h</div></div>';
+      var barClass = 'ok'; var valueColor = '#2E7D32'; var statusLabel = '';
+      var widthPct = 0;
+      var line240 = 0; var line280 = 0;
       // プログレスバーの���りつぶし
       html += '<div class="hours-bar-fill ' + barClass + '" style="width:' + widthPct + '%"></div>';
       html += '</div>';
@@ -1063,7 +1357,7 @@ var AdminShiftEdit = {
     d.setDate(d.getDate() - 1);
     if (d.getMonth() + 1 === parseInt(parts[1])) {
       this.selectedDay = this.yearMonth + '-' + ('0' + d.getDate()).slice(-2);
-      this.renderDayView();
+      this.renderCurrentView();
     }
   },
 
@@ -1073,7 +1367,485 @@ var AdminShiftEdit = {
     d.setDate(d.getDate() + 1);
     if (d.getMonth() + 1 === parseInt(parts[1])) {
       this.selectedDay = this.yearMonth + '-' + ('0' + d.getDate()).slice(-2);
-      this.renderDayView();
+      this.renderCurrentView();
+    }
+  },
+
+  // ガントチャートビュー
+  renderGanttView: function() {
+    var container = document.getElementById('ase-matrix');
+    if (!this.selectedDay) {
+      var today = new Date();
+      var todayStr = today.getFullYear() + '-' + ('0' + (today.getMonth() + 1)).slice(-2) + '-' + ('0' + today.getDate()).slice(-2);
+      this.selectedDay = todayStr.substring(0, 7) === this.yearMonth ? todayStr : this.yearMonth + '-01';
+    }
+    var parts = this.selectedDay.split('-');
+    var year = parseInt(parts[0]); var month = parseInt(parts[1]); var day = parseInt(parts[2]);
+    var daysInMonth = new Date(year, month, 0).getDate();
+    var dateObj = new Date(year, month - 1, day);
+    var dayNames = ['日', '月', '火', '水', '木', '金', '土'];
+    var isWeekend = (dateObj.getDay() === 0 || dateObj.getDay() === 6);
+
+    // 時間帯設定を取得
+    var timeSlotStaffing = [];
+    try { timeSlotStaffing = JSON.parse(this.settings['時間帯別必要人数'] || '[]'); } catch(e) {}
+
+    // この日のシフト
+    var dayShifts = [];
+    for (var i = 0; i < this.schedules.length; i++) {
+      if (this.schedules[i].date === this.selectedDay) dayShifts.push(this.schedules[i]);
+    }
+    var staffMap = {};
+    for (var si = 0; si < this.staffList.length; si++) { staffMap[this.staffList[si].id] = this.staffList[si]; }
+
+    // 表示する時間の範囲（6時〜24時）
+    var startHour = 6; var endHour = 24;
+    var totalSlots = (endHour - startHour) * 2; // 30分刻み
+
+    // ナビゲーション
+    var html = '<div class="week-nav">';
+    html += '<button class="week-nav-btn" onclick="AdminShiftEdit.prevDay()">&#9664;</button>';
+    html += '<span class="week-nav-label">' + month + '/' + day + '(' + dayNames[dateObj.getDay()] + ')' + (isWeekend ? ' [土日]' : ' [平日]') + '</span>';
+    html += '<button class="week-nav-btn" onclick="AdminShiftEdit.nextDay()">&#9654;</button>';
+    html += '</div>';
+
+    // ポジション別にスタッフを分ける
+    var hallStaff = []; var kitchenStaff = [];
+    for (var pi = 0; pi < this.staffList.length; pi++) {
+      var pos = this.staffList[pi].position || 'ホール';
+      if (pos === 'キッチン') kitchenStaff.push(this.staffList[pi]);
+      else hallStaff.push(this.staffList[pi]);
+    }
+
+    // ガントチャートのテーブル
+    html += '<div class="gantt-container"><table class="gantt-table">';
+
+    // ヘッダー: 時間軸
+    html += '<tr><th class="gantt-name-col">スタッフ</th>';
+    for (var h = startHour; h < endHour; h++) {
+      html += '<th colspan="2">' + ('0' + h).slice(-2) + ':00</th>';
+    }
+    html += '</tr>';
+
+    // シフトバーを描画する関数
+    var self = this;
+    function renderGanttRows(staffGroup, posLabel) {
+      // ポジションヘッダー
+      var rowHtml = '<tr class="gantt-position-header"><td colspan="' + (totalSlots + 1) + '">' + posLabel + ' (' + staffGroup.length + '名)</td></tr>';
+
+      for (var si = 0; si < staffGroup.length; si++) {
+        var staff = staffGroup[si];
+        var empBadge = staff.employmentType === '正社員' ? '<span class="emp-badge fulltime">社</span>' : '<span class="emp-badge parttime">AP</span>';
+        rowHtml += '<tr class="gantt-row"><td class="gantt-name-cell">' + staff.name + empBadge + '</td>';
+
+        // この人のこの日のシフトを探す
+        var shift = null;
+        for (var di = 0; di < dayShifts.length; di++) {
+          if (dayShifts[di].staffId === staff.id) { shift = dayShifts[di]; break; }
+        }
+
+        // セル描画
+        for (var slot = 0; slot < totalSlots; slot++) {
+          rowHtml += '<td class="gantt-cell" data-slot="' + slot + '" data-staff="' + staff.id + '">';
+
+          // シフトバーは開始スロットにのみ描画
+          if (shift) {
+            var shiftStartMin = parseInt(shift.startTime.split(':')[0]) * 60 + parseInt(shift.startTime.split(':')[1]);
+            var shiftEndMin = parseInt(shift.endTime.split(':')[0]) * 60 + parseInt(shift.endTime.split(':')[1]);
+            var slotMin = (startHour + Math.floor(slot / 2)) * 60 + (slot % 2) * 30;
+
+            if (slotMin === shiftStartMin) {
+              var barWidth = Math.round((shiftEndMin - shiftStartMin) / 30);
+              // 自動配置=灰色系、手動編集済み=緑/青
+              var barClass = 'gantt-bar';
+              var barStyle = '';
+              if (shift.creationMethod === '手動') {
+                barClass += ' ' + (staff.position === 'キッチン' ? 'kitchen' : 'hall');
+              } else {
+                barStyle = staff.position === 'キッチン' ? 'background:#78909C;' : 'background:#90A4AE;';
+              }
+              var barLabel = shift.startTime + '-' + shift.endTime;
+              rowHtml += '<div class="' + barClass + '" style="width:calc(' + barWidth + ' * 100% + ' + (barWidth - 1) + 'px);' + barStyle + '" onclick="AdminShiftEdit.editShift(\'' + shift.id + '\',\'' + self.selectedDay + '\',\'' + staff.id + '\')" title="' + staff.name + ' ' + barLabel + ' (' + (shift.creationMethod === '手動' ? '手動' : 'AI提案') + ')">';
+              rowHtml += '<span class="bar-handle left" onmousedown="AdminShiftEdit.startGanttDrag(event,\'' + shift.id + '\',\'left\')"></span>';
+              if (barWidth >= 4) rowHtml += barLabel;
+              rowHtml += '<span class="bar-handle right" onmousedown="AdminShiftEdit.startGanttDrag(event,\'' + shift.id + '\',\'right\')"></span>';
+              rowHtml += '</div>';
+            }
+          }
+
+          // シフトなし & 空セルクリックで追加
+          if (!shift) {
+            rowHtml = rowHtml.replace(/<td class="gantt-cell"/, '<td class="gantt-cell" style="cursor:pointer" onclick="AdminShiftEdit.addShift(\'' + self.selectedDay + '\',\'' + staff.id + '\')"');
+          }
+          rowHtml += '</td>';
+        }
+        rowHtml += '</tr>';
+      }
+      return rowHtml;
+    }
+
+    html += renderGanttRows(hallStaff, 'ホール');
+    html += renderGanttRows(kitchenStaff, 'キッチン');
+
+    // 時間帯別の必要人数/実人数サマリー
+    if (timeSlotStaffing.length > 0) {
+      html += '<tr class="gantt-summary-row"><td class="gantt-name-cell" style="font-size:11px">ホール過不足</td>';
+      for (var slot2 = 0; slot2 < totalSlots; slot2++) {
+        var slotMin2 = (startHour + Math.floor(slot2 / 2)) * 60 + (slot2 % 2) * 30;
+        var needed = 0; var actual = 0;
+        for (var ts = 0; ts < timeSlotStaffing.length; ts++) {
+          var tsStart = parseInt(timeSlotStaffing[ts].start.split(':')[0]) * 60 + parseInt(timeSlotStaffing[ts].start.split(':')[1]);
+          var tsEnd = parseInt(timeSlotStaffing[ts].end.split(':')[0]) * 60 + parseInt(timeSlotStaffing[ts].end.split(':')[1]);
+          if (slotMin2 >= tsStart && slotMin2 < tsEnd) {
+            needed = isWeekend ? (timeSlotStaffing[ts].weekendHall || timeSlotStaffing[ts].hall || 0) : (timeSlotStaffing[ts].weekdayHall || timeSlotStaffing[ts].hall || 0);
+          }
+        }
+        for (var ds = 0; ds < dayShifts.length; ds++) {
+          var st = staffMap[dayShifts[ds].staffId];
+          if (!st || st.position === 'キッチン') continue;
+          var dsStart = parseInt(dayShifts[ds].startTime.split(':')[0]) * 60 + parseInt(dayShifts[ds].startTime.split(':')[1]);
+          var dsEnd = parseInt(dayShifts[ds].endTime.split(':')[0]) * 60 + parseInt(dayShifts[ds].endTime.split(':')[1]);
+          if (slotMin2 >= dsStart && slotMin2 < dsEnd) actual++;
+        }
+        var diff = actual - needed;
+        var cls = needed === 0 ? '' : (diff >= 0 ? 'ok' : 'shortage');
+        html += '<td class="' + cls + '">' + (needed > 0 ? actual + '/' + needed : '') + '</td>';
+      }
+      html += '</tr>';
+
+      html += '<tr class="gantt-summary-row"><td class="gantt-name-cell" style="font-size:11px">キッチン過不足</td>';
+      for (var slot3 = 0; slot3 < totalSlots; slot3++) {
+        var slotMin3 = (startHour + Math.floor(slot3 / 2)) * 60 + (slot3 % 2) * 30;
+        var needed3 = 0; var actual3 = 0;
+        for (var ts3 = 0; ts3 < timeSlotStaffing.length; ts3++) {
+          var ts3Start = parseInt(timeSlotStaffing[ts3].start.split(':')[0]) * 60 + parseInt(timeSlotStaffing[ts3].start.split(':')[1]);
+          var ts3End = parseInt(timeSlotStaffing[ts3].end.split(':')[0]) * 60 + parseInt(timeSlotStaffing[ts3].end.split(':')[1]);
+          if (slotMin3 >= ts3Start && slotMin3 < ts3End) {
+            needed3 = isWeekend ? (timeSlotStaffing[ts3].weekendKitchen || timeSlotStaffing[ts3].kitchen || 0) : (timeSlotStaffing[ts3].weekdayKitchen || timeSlotStaffing[ts3].kitchen || 0);
+          }
+        }
+        for (var ds3 = 0; ds3 < dayShifts.length; ds3++) {
+          var st3 = staffMap[dayShifts[ds3].staffId];
+          if (!st3 || st3.position !== 'キッチン') continue;
+          var ds3Start = parseInt(dayShifts[ds3].startTime.split(':')[0]) * 60 + parseInt(dayShifts[ds3].startTime.split(':')[1]);
+          var ds3End = parseInt(dayShifts[ds3].endTime.split(':')[0]) * 60 + parseInt(dayShifts[ds3].endTime.split(':')[1]);
+          if (slotMin3 >= ds3Start && slotMin3 < ds3End) actual3++;
+        }
+        var diff3 = actual3 - needed3;
+        var cls3 = needed3 === 0 ? '' : (diff3 >= 0 ? 'ok' : 'shortage');
+        html += '<td class="' + cls3 + '">' + (needed3 > 0 ? actual3 + '/' + needed3 : '') + '</td>';
+      }
+      html += '</tr>';
+    }
+
+    html += '</table></div>';
+
+    // 時間帯別の不足サマリーをカード形式で表示
+    if (timeSlotStaffing.length > 0) {
+      html += '<div style="margin-top:16px;display:flex;gap:12px;flex-wrap:wrap">';
+      for (var tsi = 0; tsi < timeSlotStaffing.length; tsi++) {
+        var ts = timeSlotStaffing[tsi];
+        var hallNeed = isWeekend ? (ts.weekendHall || ts.hall || 0) : (ts.weekdayHall || ts.hall || 0);
+        var kitchenNeed = isWeekend ? (ts.weekendKitchen || ts.kitchen || 0) : (ts.weekdayKitchen || ts.kitchen || 0);
+        var tsStartMin = parseInt(ts.start.split(':')[0]) * 60 + parseInt(ts.start.split(':')[1]);
+        var tsEndMin = parseInt(ts.end.split(':')[0]) * 60 + parseInt(ts.end.split(':')[1]);
+        var hActual = 0, kActual = 0;
+        for (var dsi = 0; dsi < dayShifts.length; dsi++) {
+          var dsh = dayShifts[dsi];
+          var dshS = parseInt(dsh.startTime.split(':')[0]) * 60 + parseInt(dsh.startTime.split(':')[1]);
+          var dshE = parseInt(dsh.endTime.split(':')[0]) * 60 + parseInt(dsh.endTime.split(':')[1]);
+          if (dshS <= tsStartMin && dshE >= tsEndMin) {
+            var dst = staffMap[dsh.staffId];
+            if (dst && dst.position === 'キッチン') kActual++;
+            else hActual++;
+          }
+        }
+        var hDiff = hActual - hallNeed;
+        var kDiff = kActual - kitchenNeed;
+        var allOk = hDiff >= 0 && kDiff >= 0;
+        var cardBg = allOk ? '#E8F5E9' : '#FFEBEE';
+        var cardBorder = allOk ? '#A5D6A7' : '#EF9A9A';
+        html += '<div style="flex:1;min-width:200px;background:' + cardBg + ';border:2px solid ' + cardBorder + ';border-radius:12px;padding:12px;text-align:center">';
+        html += '<div style="font-weight:bold;font-size:14px;color:#4A3323;margin-bottom:8px">' + (ts.label || '') + ' ' + ts.start + ' - ' + ts.end + '</div>';
+        // ホール
+        var hColor = hDiff >= 0 ? '#2E7D32' : '#C62828';
+        html += '<div style="display:flex;justify-content:space-between;padding:4px 8px"><span>ホール</span><span style="font-weight:bold;color:' + hColor + '">' + hActual + ' / ' + hallNeed + '人';
+        if (hDiff < 0) html += ' (' + Math.abs(hDiff) + '名不足!)';
+        else if (hDiff > 0) html += ' (+' + hDiff + ')';
+        html += '</span></div>';
+        // キッチン
+        var kColor = kDiff >= 0 ? '#2E7D32' : '#C62828';
+        html += '<div style="display:flex;justify-content:space-between;padding:4px 8px"><span>キッチン</span><span style="font-weight:bold;color:' + kColor + '">' + kActual + ' / ' + kitchenNeed + '人';
+        if (kDiff < 0) html += ' (' + Math.abs(kDiff) + '名不足!)';
+        else if (kDiff > 0) html += ' (+' + kDiff + ')';
+        html += '</span></div>';
+        html += '</div>';
+      }
+      html += '</div>';
+    }
+
+    // 未配置スタッフ
+    var assignedIds = {};
+    for (var ai = 0; ai < dayShifts.length; ai++) { assignedIds[dayShifts[ai].staffId] = true; }
+    var unassigned = this.staffList.filter(function(s) { return !assignedIds[s.id]; });
+    if (unassigned.length > 0) {
+      html += '<div style="margin-top:12px;padding:8px;background:#FFF8E1;border-radius:8px">';
+      html += '<div style="font-size:12px;color:#888;margin-bottom:4px">未配置スタッフ（クリックで追加）:</div>';
+      for (var ui = 0; ui < unassigned.length; ui++) {
+        var uBadge = unassigned[ui].employmentType === '正社員' ? '[社]' : '';
+        var uPos = unassigned[ui].position === 'キッチン' ? 'K' : 'H';
+        html += '<span class="day-view-chip' + (unassigned[ui].position === 'キッチン' ? ' kitchen' : '') + '" style="margin:2px" onclick="AdminShiftEdit.addShift(\'' + this.selectedDay + '\',\'' + unassigned[ui].id + '\')">' + uBadge + unassigned[ui].name + '(' + uPos + ')</span>';
+      }
+      html += '</div>';
+    }
+
+    container.innerHTML = html;
+  },
+
+  // ガントバーのドラッグ操作（30分刻みで調整）
+  _dragState: null,
+  startGanttDrag: function(e, shiftId, side) {
+    e.preventDefault(); e.stopPropagation();
+    var shift = null;
+    for (var i = 0; i < this.schedules.length; i++) {
+      if (this.schedules[i].id === shiftId) { shift = this.schedules[i]; break; }
+    }
+    if (!shift) return;
+
+    this._dragState = { shiftId: shiftId, side: side, startX: e.clientX, origStart: shift.startTime, origEnd: shift.endTime };
+    var self = this;
+    var onMove = function(ev) { self._onGanttDrag(ev); };
+    var onUp = function(ev) {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      self._finishGanttDrag();
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  },
+
+  _onGanttDrag: function(e) {
+    if (!this._dragState) return;
+    var dx = e.clientX - this._dragState.startX;
+    // 1セル幅を約28pxと想定、30分単位
+    var slotDelta = Math.round(dx / 28);
+    var minutesDelta = slotDelta * 30;
+
+    var origStartMin = parseInt(this._dragState.origStart.split(':')[0]) * 60 + parseInt(this._dragState.origStart.split(':')[1]);
+    var origEndMin = parseInt(this._dragState.origEnd.split(':')[0]) * 60 + parseInt(this._dragState.origEnd.split(':')[1]);
+
+    if (this._dragState.side === 'left') {
+      var newStart = Math.max(360, Math.min(origStartMin + minutesDelta, origEndMin - 30)); // 6:00以降、終了の30分前まで
+      this._dragState.newStart = ('0' + Math.floor(newStart / 60)).slice(-2) + ':' + ('0' + (newStart % 60)).slice(-2);
+      this._dragState.newEnd = this._dragState.origEnd;
+    } else {
+      var newEnd = Math.min(1440, Math.max(origEndMin + minutesDelta, origStartMin + 30)); // 24:00まで、開始の30分後以降
+      this._dragState.newStart = this._dragState.origStart;
+      this._dragState.newEnd = ('0' + Math.floor(newEnd / 60)).slice(-2) + ':' + ('0' + (newEnd % 60)).slice(-2);
+    }
+  },
+
+  _dragJustFinished: false,
+
+  _finishGanttDrag: function() {
+    if (!this._dragState || !this._dragState.newStart) { this._dragState = null; return; }
+    var state = this._dragState; this._dragState = null;
+
+    // 変化がなければスキップ
+    if (state.newStart === state.origStart && state.newEnd === state.origEnd) return;
+
+    // ドラッグ直後のクリックでモーダルが開かないようフラグ設定
+    this._dragJustFinished = true;
+    var self = this;
+    setTimeout(function() { self._dragJustFinished = false; }, 300);
+
+    App.showLoading('更新中...');
+    API.updateShiftEntry(state.shiftId, { startTime: state.newStart, endTime: state.newEnd }).then(function(result) {
+      App.hideLoading();
+      if (result.success) {
+        App.showToast(state.origStart + '-' + state.origEnd + ' → ' + state.newStart + '-' + state.newEnd, 'success');
+        self.load();
+      } else { App.showToast(result.message, 'error'); }
+    }).catch(function() { App.hideLoading(); App.showToast('更新に失敗しました', 'error'); });
+  },
+
+  // ガント週表示
+  renderGanttWeekView: function() {
+    var container = document.getElementById('ase-matrix');
+    var parts = this.yearMonth.split('-');
+    var year = parseInt(parts[0]); var month = parseInt(parts[1]);
+    var daysInMonth = new Date(year, month, 0).getDate();
+    var dayNames = ['日', '月', '火', '水', '木', '金', '土'];
+    var startHour = 9; var endHour = 23;
+    var totalSlots = (endHour - startHour) * 2;
+
+    var firstDay = new Date(year, month - 1, 1);
+    var startOffset = firstDay.getDay() === 0 ? 6 : firstDay.getDay() - 1;
+    var weekStart = 1 - startOffset + (this.weekOffset * 7);
+    if (weekStart < 1) weekStart = 1;
+    var weekEnd = Math.min(weekStart + 6, daysInMonth);
+
+    var timeSlots = [];
+    try { timeSlots = JSON.parse(this.settings['時間帯別必要人数'] || '[]'); } catch(e) {}
+
+    var staffMap = {};
+    for (var si = 0; si < this.staffList.length; si++) staffMap[this.staffList[si].id] = this.staffList[si];
+
+    var schedByDate = {};
+    for (var i = 0; i < this.schedules.length; i++) {
+      var s = this.schedules[i];
+      if (!schedByDate[s.date]) schedByDate[s.date] = [];
+      schedByDate[s.date].push(s);
+    }
+
+    var self = this;
+    var html = '<div class="week-nav">';
+    html += '<button class="week-nav-btn" onclick="AdminShiftEdit.weekOffset--;AdminShiftEdit.renderGanttWeekView()">&#9664;</button>';
+    html += '<span class="week-nav-label">' + month + '/' + weekStart + ' ~ ' + month + '/' + weekEnd + '</span>';
+    html += '<button class="week-nav-btn" onclick="AdminShiftEdit.weekOffset++;AdminShiftEdit.renderGanttWeekView()">&#9654;</button>';
+    html += '</div>';
+
+    // ヘルパー: 時間帯の実人数を計算
+    function calcSlotCounts(dayShifts, slot, isWknd) {
+      var hallN = isWknd ? (slot.weekendHall || slot.hall || 0) : (slot.weekdayHall || slot.hall || 0);
+      var kitchenN = isWknd ? (slot.weekendKitchen || slot.kitchen || 0) : (slot.weekdayKitchen || slot.kitchen || 0);
+      var slotS = parseInt(slot.start.split(':')[0]) * 60 + parseInt(slot.start.split(':')[1]);
+      var slotE = parseInt(slot.end.split(':')[0]) * 60 + parseInt(slot.end.split(':')[1]);
+      var hC = 0, kC = 0;
+      for (var di = 0; di < dayShifts.length; di++) {
+        var sh = dayShifts[di]; var st = staffMap[sh.staffId]; if (!st) continue;
+        var sS = parseInt(sh.startTime.split(':')[0]) * 60 + parseInt(sh.startTime.split(':')[1]);
+        var sE = parseInt(sh.endTime.split(':')[0]) * 60 + parseInt(sh.endTime.split(':')[1]);
+        if (sS <= slotS && sE >= slotE) { if (st.position === 'キッチン') kC++; else hC++; }
+      }
+      return { hallNeed: hallN, kitchenNeed: kitchenN, hallActual: hC, kitchenActual: kC };
+    }
+
+    // ヘルパー: 不足/オーバーの表示テキスト
+    function statusText(actual, needed) {
+      var diff = actual - needed;
+      if (diff < 0) return '<span style="color:#C62828;font-weight:bold">' + actual + '/' + needed + ' (' + Math.abs(diff) + '名不足)</span>';
+      if (diff > 0) return '<span style="color:#1565C0;font-weight:bold">' + actual + '/' + needed + ' (+' + diff + '名余剰)</span>';
+      return '<span style="color:#2E7D32;font-weight:bold">' + actual + '/' + needed + ' OK</span>';
+    }
+
+    for (var d = weekStart; d <= weekEnd; d++) {
+      if (d < 1 || d > daysInMonth) continue;
+      var dateStr = this.yearMonth + '-' + ('0' + d).slice(-2);
+      var dow = new Date(year, month - 1, d).getDay();
+      var isWeekend = (dow === 0 || dow === 6);
+      var dayStyle = dow === 0 ? 'color:#C62828' : (dow === 6 ? 'color:#1565C0' : '');
+      var dayShifts = schedByDate[dateStr] || [];
+
+      // 日ヘッダー
+      html += '<div style="margin-bottom:20px">';
+      html += '<div style="padding:10px 12px;background:linear-gradient(135deg,#FAF7F2,#F0E8DC);border-radius:10px;border:1px solid #D4C5B5;margin-bottom:4px">';
+      html += '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">';
+      html += '<span style="font-size:18px;font-weight:bold;' + dayStyle + '">' + month + '/' + d + '(' + dayNames[dow] + ')</span>';
+      html += '<span style="font-size:13px;color:#888">' + dayShifts.length + '名配置</span>';
+
+      // 時間帯別カード
+      for (var ts = 0; ts < timeSlots.length; ts++) {
+        var sc = calcSlotCounts(dayShifts, timeSlots[ts], isWeekend);
+        var hasShortage = sc.hallActual < sc.hallNeed || sc.kitchenActual < sc.kitchenNeed;
+        var hasSurplus = sc.hallActual > sc.hallNeed || sc.kitchenActual > sc.kitchenNeed;
+        var cardBg, cardBorder;
+        if (hasShortage) { cardBg = '#FFEBEE'; cardBorder = '#EF5350'; }
+        else if (hasSurplus) { cardBg = '#E3F2FD'; cardBorder = '#42A5F5'; }
+        else { cardBg = '#E8F5E9'; cardBorder = '#66BB6A'; }
+        html += '<div style="display:inline-block;background:' + cardBg + ';border:2px solid ' + cardBorder + ';border-radius:6px;padding:4px 10px;font-size:11px">';
+        html += '<b>' + (timeSlots[ts].label || timeSlots[ts].start) + '</b> ' + timeSlots[ts].start + '-' + timeSlots[ts].end;
+        if (hasShortage) html += ' <span style="color:#C62828;font-weight:bold">!不足!</span>';
+        html += '<br>';
+        html += 'H:' + statusText(sc.hallActual, sc.hallNeed) + ' K:' + statusText(sc.kitchenActual, sc.kitchenNeed);
+        html += '</div>';
+      }
+      html += '</div></div>';
+
+      // ガントチャートテーブル
+      html += '<div class="gantt-container"><table class="gantt-table" style="margin-bottom:0"><tr><th class="gantt-name-col" style="font-size:9px">名前</th>';
+      for (var h = startHour; h < endHour; h++) {
+        html += '<th colspan="2" style="font-size:9px">' + h + '</th>';
+      }
+      html += '</tr>';
+
+      // シフトバー描画
+      for (var di2 = 0; di2 < dayShifts.length; di2++) {
+        var shift = dayShifts[di2];
+        var staff = staffMap[shift.staffId]; if (!staff) continue;
+        var empBadge = staff.employmentType === '正社員' ? '<span class="emp-badge fulltime">社</span>' : '';
+        var posLabel = staff.position === 'キッチン' ? '<span style="color:#1565C0;font-size:9px"> K</span>' : '<span style="color:#2E7D32;font-size:9px"> H</span>';
+        html += '<tr class="gantt-row"><td class="gantt-name-cell" style="font-size:10px">' + staff.name + posLabel + empBadge + '</td>';
+
+        for (var slot2 = 0; slot2 < totalSlots; slot2++) {
+          html += '<td class="gantt-cell">';
+          var shSMin = parseInt(shift.startTime.split(':')[0]) * 60 + parseInt(shift.startTime.split(':')[1]);
+          var shEMin = parseInt(shift.endTime.split(':')[0]) * 60 + parseInt(shift.endTime.split(':')[1]);
+          var slMin = (startHour + Math.floor(slot2 / 2)) * 60 + (slot2 % 2) * 30;
+          if (slMin === shSMin) {
+            var bw = Math.round((shEMin - shSMin) / 30);
+            var barCls = 'gantt-bar';
+            var barSt = '';
+            if (shift.creationMethod === '手動') {
+              barCls += ' ' + (staff.position === 'キッチン' ? 'kitchen' : 'hall');
+            } else {
+              barSt = staff.position === 'キッチン' ? 'background:#78909C;' : 'background:#90A4AE;';
+            }
+            html += '<div class="' + barCls + '" style="width:calc(' + bw + ' * 100% + ' + (bw - 1) + 'px);' + barSt + '" onclick="AdminShiftEdit.editShift(\'' + shift.id + '\',\'' + dateStr + '\',\'' + shift.staffId + '\')" title="' + staff.name + ' ' + shift.startTime + '-' + shift.endTime + '">';
+            html += '<span class="bar-handle left" onmousedown="AdminShiftEdit.startGanttDrag(event,\'' + shift.id + '\',\'left\')"></span>';
+            if (bw >= 3) html += '<span style="pointer-events:none">' + shift.startTime + '-' + shift.endTime + '</span>';
+            html += '<span class="bar-handle right" onmousedown="AdminShiftEdit.startGanttDrag(event,\'' + shift.id + '\',\'right\')"></span>';
+            html += '</div>';
+          }
+          html += '</td>';
+        }
+        html += '</tr>';
+      }
+
+      // 未配置スタッフ（この日にシフトなし）
+      var assignedIds = {};
+      for (var ai = 0; ai < dayShifts.length; ai++) assignedIds[dayShifts[ai].staffId] = true;
+      var unassigned = this.staffList.filter(function(s) { return !assignedIds[s.id]; });
+      if (unassigned.length > 0) {
+        html += '<tr><td colspan="' + (totalSlots + 1) + '" style="padding:4px 8px;background:#FFF8E1;font-size:10px">';
+        html += '<span style="color:#888">未配置: </span>';
+        for (var ui = 0; ui < unassigned.length; ui++) {
+          html += '<span class="day-view-chip' + (unassigned[ui].position === 'キッチン' ? ' kitchen' : '') + '" style="margin:1px;font-size:9px;padding:1px 4px" onclick="AdminShiftEdit.addShift(\'' + dateStr + '\',\'' + unassigned[ui].id + '\')">' + unassigned[ui].name + '</span>';
+        }
+        html += '</td></tr>';
+      }
+
+      html += '</table></div></div>';
+    }
+
+    container.innerHTML = html;
+  },
+
+  // 不足文面を自動生成する
+  generateShortageText: function() {
+    App.showLoading('不足箇所を分析中...');
+    API.generateShortageText(this.yearMonth).then(function(result) {
+      App.hideLoading();
+      if (result.success && result.text) {
+        document.getElementById('ase-shortage-text').value = result.text;
+        App.showModal('ase-shortage-modal');
+      } else {
+        App.showToast(result.message || '生成に失敗しました', 'error');
+      }
+    }).catch(function() { App.hideLoading(); App.showToast('生成に失敗しました', 'error'); });
+  },
+
+  // 不足文面をクリップボードにコピー
+  copyShortageText: function() {
+    var textEl = document.getElementById('ase-shortage-text');
+    if (textEl) {
+      navigator.clipboard.writeText(textEl.value).then(function() {
+        App.showToast('コピーしました', 'success');
+      }).catch(function() {
+        textEl.select();
+        document.execCommand('copy');
+        App.showToast('コピーしました', 'success');
+      });
     }
   },
 

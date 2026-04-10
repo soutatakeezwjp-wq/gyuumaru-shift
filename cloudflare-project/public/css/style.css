@@ -421,3 +421,71 @@ body {
 .week-nav-btn { background: none; border: 1px solid #D7CCC8; border-radius: 4px; padding: 4px 10px; cursor: pointer; font-size: 13px; }
 .week-nav-btn:hover { background: #F5F0EB; }
 .week-nav-label { font-weight: bold; font-size: 14px; color: #4A3323; }
+
+/* ステップ型ワークフロー */
+.workflow-steps { display: flex; align-items: center; justify-content: center; gap: 0; padding: 20px 0; background: linear-gradient(135deg, #FAF7F2, #F0E8DC); border-radius: 16px; border: 2px solid #D4C5B5; }
+.workflow-step { display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; padding: 8px 16px; border-radius: 12px; transition: all 0.2s; min-width: 80px; }
+.workflow-step:hover { background: rgba(74, 51, 35, 0.08); }
+.workflow-step.active { background: #4A3323; }
+.workflow-step.active .step-number { background: #fff; color: #4A3323; }
+.workflow-step.active .step-label { color: #fff; font-weight: bold; }
+.workflow-step.done { opacity: 0.7; }
+.workflow-step.done .step-number { background: #4CAF50; color: #fff; }
+.step-number { width: 36px; height: 36px; border-radius: 50%; background: #D4C5B5; color: #4A3323; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 16px; }
+.step-label { font-size: 12px; color: #4A3323; white-space: nowrap; }
+.workflow-arrow { color: #D4C5B5; font-size: 14px; margin: 0 2px; }
+
+.step-panel { animation: fadeIn 0.3s ease; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+.step-hero { text-align: center; padding: 32px 16px; margin-bottom: 24px; background: linear-gradient(135deg, #FFF8E1, #F0E8DC); border-radius: 16px; border: 1px solid #D4C5B5; }
+.step-hero-number { font-size: 14px; font-weight: bold; color: #8D6E63; letter-spacing: 3px; margin-bottom: 8px; }
+.step-hero-title { font-size: 24px; font-weight: bold; color: #4A3323; margin-bottom: 8px; }
+.step-hero-desc { font-size: 14px; color: #8B7B6B; }
+
+.step-action { display: flex; justify-content: center; align-items: center; padding: 16px 0; }
+
+/* 不足サマリーカード */
+.shortage-card { background: #fff; border-radius: 12px; border: 1px solid #E8E0D8; padding: 16px; margin-bottom: 12px; }
+.shortage-card-header { font-weight: bold; font-size: 14px; color: #4A3323; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+.shortage-slot { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-radius: 8px; margin-bottom: 4px; }
+.shortage-slot.ok { background: #E8F5E9; }
+.shortage-slot.short { background: #FFEBEE; }
+.shortage-slot-time { font-weight: bold; font-size: 13px; min-width: 100px; color: #4A3323; }
+.shortage-slot-bar { flex: 1; height: 24px; background: #E0E0E0; border-radius: 4px; position: relative; overflow: hidden; }
+.shortage-slot-fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
+.shortage-slot-fill.ok { background: #4CAF50; }
+.shortage-slot-fill.short { background: #EF5350; }
+.shortage-slot-label { font-size: 12px; font-weight: bold; min-width: 80px; text-align: right; }
+
+/* ガントチャートビュー */
+.gantt-container { overflow-x: auto; }
+.gantt-table { border-collapse: collapse; width: 100%; min-width: 900px; }
+.gantt-table th, .gantt-table td { border: 1px solid #E8E0D8; padding: 0; text-align: center; }
+.gantt-table th { background: #4A3323; color: #fff; font-size: 10px; padding: 4px 0; height: 32px; min-width: 28px; }
+.gantt-table th.gantt-name-col { min-width: 100px; width: 100px; position: sticky; left: 0; z-index: 2; }
+.gantt-name-cell { min-width: 100px; width: 100px; text-align: left; padding: 2px 6px; font-size: 11px; font-weight: bold; color: #4A3323; background: #F5F5F5; position: sticky; left: 0; z-index: 1; white-space: nowrap; }
+.gantt-name-cell .emp-badge { display: inline-block; font-size: 9px; padding: 1px 4px; border-radius: 3px; margin-left: 2px; }
+.gantt-name-cell .emp-badge.fulltime { background: #E8F5E9; color: #2E7D32; border: 1px solid #A5D6A7; }
+.gantt-name-cell .emp-badge.parttime { background: #E3F2FD; color: #1565C0; border: 1px solid #90CAF9; }
+.gantt-row { height: 32px; }
+.gantt-cell { position: relative; height: 32px; min-width: 28px; cursor: default; }
+.gantt-bar { position: absolute; top: 3px; height: 26px; border-radius: 4px; font-size: 9px; color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; min-width: 20px; z-index: 1; user-select: none; }
+.gantt-bar.hall { background: #43A047; }
+.gantt-bar.kitchen { background: #1E88E5; }
+.gantt-bar:hover { opacity: 0.85; box-shadow: 0 2px 6px rgba(0,0,0,0.3); }
+.gantt-bar .bar-handle { position: absolute; top: 0; width: 8px; height: 100%; cursor: col-resize; z-index: 2; }
+.gantt-bar .bar-handle.left { left: 0; border-radius: 4px 0 0 4px; }
+.gantt-bar .bar-handle.right { right: 0; border-radius: 0 4px 4px 0; }
+.gantt-bar .bar-handle:hover { background: rgba(255,255,255,0.4); }
+.gantt-hour-line { position: absolute; top: 0; bottom: 0; width: 1px; background: #E0D8D0; pointer-events: none; z-index: 0; }
+.gantt-position-header td { background: #8D6E63; color: #fff; font-weight: bold; font-size: 12px; padding: 6px; text-align: left; }
+.gantt-summary-row td { background: #FFF8E1; font-size: 11px; font-weight: bold; padding: 4px 0; }
+.gantt-summary-row .shortage { background: #FFCDD2; color: #C62828; }
+.gantt-summary-row .ok { background: #E8F5E9; color: #2E7D32; }
+.gantt-need-label { position: absolute; top: 0; height: 100%; display: flex; align-items: center; font-size: 8px; color: #999; pointer-events: none; }
+
+/* 時間帯設定UI */
+.time-slot-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; padding: 8px; background: #F5F0EB; border-radius: 8px; }
+.time-slot-row select, .time-slot-row input { font-size: 13px; }
+.time-slot-row .remove-slot { background: none; border: none; color: #C62828; cursor: pointer; font-size: 18px; padding: 0 4px; }
