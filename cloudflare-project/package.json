@@ -12,6 +12,7 @@
     "db:reset": "wrangler d1 execute gyuumaru-db --local --command='DROP TABLE IF EXISTS logs; DROP TABLE IF EXISTS labor_costs; DROP TABLE IF EXISTS shift_schedules; DROP TABLE IF EXISTS shift_requests; DROP TABLE IF EXISTS staff; DROP TABLE IF EXISTS store_settings; DROP TABLE IF EXISTS stores;' && npm run db:init && npm run db:seed"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.103.0",
     "hono": "^4.12.9"
   },
   "devDependencies": {

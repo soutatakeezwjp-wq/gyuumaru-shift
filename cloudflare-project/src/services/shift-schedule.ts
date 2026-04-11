@@ -1,13 +1,14 @@
 // ぎゅう丸シフト管理システム - シフト表作成・管理サービス（ShiftScheduleService.gs の移植）
 
 import * as dao from '../db/dao';
+import type { DB } from '../db/supabase';
 import { getCurrentStoreInfo } from './auth';
 import { REQUEST_TYPES, SHIFT_STATUS, SHIFT_CREATION, TIME_CONFIG, POSITIONS } from '../config';
 import { getAllDatesInMonth, timeToMinutes, calcHoursDiff, addDays, getMonday, getDayOfWeek } from '../utils';
 import type { ShiftSchedule, StaffData, ApiResult, TimeSlotStaffing } from '../types';
 
 // シフト表を自動作成する（時間帯別必要人数対応版）
-export async function generateAutoShift(db: D1Database, storeId: number, yearMonth: string): Promise<ApiResult & { warnings?: string[] }> {
+export async function generateAutoShift(db: DB, storeId: number, yearMonth: string): Promise<ApiResult & { warnings?: string[] }> {
   const storeInfo = await getCurrentStoreInfo(db, storeId);
   const allStaff = await dao.getAllStaffData(db, storeId, true);
   const allRequests = await dao.getAllShiftRequests(db, storeId, yearMonth);
@@ -274,7 +275,7 @@ export async function generateAutoShift(db: D1Database, storeId: number, yearMon
 
 // 余剰を自動解消する
 // 毎パスでDBから再取得し、全時間帯の余剰がなくなるまで繰り返す
-export async function resolveSurplus(db: D1Database, storeId: number, yearMonth: string): Promise<ApiResult & { changes?: string[] }> {
+export async function resolveSurplus(db: DB, storeId: number, yearMonth: string): Promise<ApiResult & { changes?: string[] }> {
   const storeInfo = await getCurrentStoreInfo(db, storeId);
   const allStaff = await dao.getAllStaffData(db, storeId, true);
   const timeSlots = storeInfo.timeSlotStaffing;
@@ -386,7 +387,7 @@ export async function resolveSurplus(db: D1Database, storeId: number, yearMonth:
 }
 
 // 人員不足テキストを自動生成する（LINE配信用）
-export async function generateShortageText(db: D1Database, storeId: number, yearMonth: string): Promise<ApiResult & { text?: string }> {
+export async function generateShortageText(db: DB, storeId: number, yearMonth: string): Promise<ApiResult & { text?: string }> {
   const storeInfo = await getCurrentStoreInfo(db, storeId);
   const schedules = await dao.getShiftSchedules(db, storeId, yearMonth);
   const allStaff = await dao.getAllStaffData(db, storeId, true);
@@ -450,7 +451,7 @@ export async function generateShortageText(db: D1Database, storeId: number, year
   }
 
   if (shortageLines.length === 0) {
-    return { success: true, text: '現在、人員不足の時間帯はありません。' };
+    return { success: true, message: '人員不足なし', text: '現在、人員不足の時間帯はありません。' };
   }
 
   const parts = yearMonth.split('-');
@@ -461,7 +462,7 @@ export async function generateShortageText(db: D1Database, storeId: number, year
   }
   text += '\nよろしくお願いします！';
 
-  return { success: true, text };
+  return { success: true, message: '人員不足テキストを生成しました', text };
 }
 
 // 制約チェック（内部関数）
@@ -509,18 +510,18 @@ function checkConstraints(
 }
 
 // 確定シフト表を取得する
-export async function getShiftSchedule(db: D1Database, storeId: number, yearMonth: string): Promise<ShiftSchedule[]> {
+export async function getShiftSchedule(db: DB, storeId: number, yearMonth: string): Promise<ShiftSchedule[]> {
   return dao.getShiftSchedules(db, storeId, yearMonth);
 }
 
 // 自分の確定シフトを取得する
-export async function getMyShift(db: D1Database, storeId: number, staffId: string, yearMonth: string): Promise<ShiftSchedule[]> {
+export async function getMyShift(db: DB, storeId: number, staffId: string, yearMonth: string): Promise<ShiftSchedule[]> {
   const all = await dao.getShiftSchedules(db, storeId, yearMonth);
   return all.filter(s => s.staffId === staffId);
 }
 
 // シフト1件を更新する
-export async function updateShiftEntry(db: D1Database, storeId: number, shiftId: string, data: Partial<{ startTime: string; endTime: string }>): Promise<ApiResult> {
+export async function updateShiftEntry(db: DB, storeId: number, shiftId: string, data: Partial<{ startTime: string; endTime: string }>): Promise<ApiResult> {
   const result = await dao.updateShiftScheduleEntry(db, shiftId, data);
   if (result) {
     await dao.addLog(db, storeId, '管理者', 'シフト編集', shiftId);
@@ -531,7 +532,7 @@ export async function updateShiftEntry(db: D1Database, storeId: number, shiftId:
 
 // シフト1件を追加する
 export async function addShiftEntry(
-  db: D1Database, storeId: number, data: { staffId: string; yearMonth: string; date: string; startTime: string; endTime: string }
+  db: DB, storeId: number, data: { staffId: string; yearMonth: string; date: string; startTime: string; endTime: string }
 ): Promise<ApiResult & { shiftId?: string }> {
   const shiftId = await dao.addShiftScheduleEntry(db, storeId, data);
   await dao.addLog(db, storeId, '管理者', 'シフト追加', data.staffId + ' ' + data.date);
@@ -539,7 +540,7 @@ export async function addShiftEntry(
 }
 
 // シフト1件を削除する
-export async function deleteShiftEntry(db: D1Database, storeId: number, shiftId: string): Promise<ApiResult> {
+export async function deleteShiftEntry(db: DB, storeId: number, shiftId: string): Promise<ApiResult> {
   const result = await dao.deleteShiftScheduleEntry(db, shiftId);
   if (result) {
     await dao.addLog(db, storeId, '管理者', 'シフト削除', shiftId);
@@ -549,14 +550,14 @@ export async function deleteShiftEntry(db: D1Database, storeId: number, shiftId:
 }
 
 // シフトを全クリアする
-export async function clearShift(db: D1Database, storeId: number, yearMonth: string): Promise<ApiResult> {
+export async function clearShift(db: DB, storeId: number, yearMonth: string): Promise<ApiResult> {
   await dao.clearShiftSchedules(db, storeId, yearMonth);
   await dao.addLog(db, storeId, '管理者', 'シフトクリア', yearMonth);
   return { success: true, message: yearMonth + 'のシフトをクリアしました' };
 }
 
 // シフトを確定する
-export async function finalizeShift(db: D1Database, storeId: number, yearMonth: string): Promise<ApiResult> {
+export async function finalizeShift(db: DB, storeId: number, yearMonth: string): Promise<ApiResult> {
   await dao.updateShiftStatus(db, storeId, yearMonth, SHIFT_STATUS.CONFIRMED);
   await dao.addLog(db, storeId, '管理者', 'シフト確定', yearMonth);
   return { success: true, message: yearMonth + 'のシフトを確定しました' };

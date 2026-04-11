@@ -1,6 +1,7 @@
 // ぎゅう丸シフト管理システム - 人件費計算サービス（LaborCostService.gs の移植）
 
 import * as dao from '../db/dao';
+import type { DB } from '../db/supabase';
 import { getCurrentStoreInfo } from './auth';
 import { EMPLOYMENT_TYPES, TIME_CONFIG } from '../config';
 import { timeToMinutes, calcBreakMinutes, getMonday } from '../utils';
@@ -8,7 +9,7 @@ import type { StaffData, ShiftSchedule, LaborCostData, ApiResult } from '../type
 
 // 月間人件費を計算する
 export async function calculateLaborCost(
-  db: D1Database, storeId: number, yearMonth: string
+  db: DB, storeId: number, yearMonth: string
 ): Promise<ApiResult & { staffCosts: LaborCostData[]; totalCost: number }> {
   const schedules = await dao.getShiftSchedules(db, storeId, yearMonth);
   const allStaff = await dao.getAllStaffData(db, storeId, true);
@@ -178,7 +179,7 @@ function calcStaffCost(staff: StaffData, shifts: ShiftSchedule[], position: stri
 
 // 保存済みの人件費レポートを取得する
 export async function getLaborCostReport(
-  db: D1Database, storeId: number, yearMonth: string
+  db: DB, storeId: number, yearMonth: string
 ): Promise<{ staffCosts: LaborCostData[]; totalCost: number }> {
   const costs = await dao.getLaborCosts(db, storeId, yearMonth);
   let totalCost = 0;

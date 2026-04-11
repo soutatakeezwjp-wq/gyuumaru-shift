@@ -77,6 +77,26 @@
     </div>
   </div>
 
+  <!-- スタッフPIN入力画面（2回目以降ログイン） -->
+  <div id="screen-staff-pin-login" class="screen hidden">
+    <div class="content" style="max-width:420px;margin:0 auto">
+      <h2 class="mb-8" id="pin-login-title">PINを入力</h2>
+      <p class="text-muted mb-16" id="pin-login-staff-name"></p>
+      <div class="form-group">
+        <label class="form-label">4桁のPIN</label>
+        <input type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4"
+               id="pin-login-input" class="form-input" style="font-size:2rem;letter-spacing:0.5rem;text-align:center"
+               autocomplete="off" placeholder="••••">
+      </div>
+      <button class="btn btn-primary btn-block btn-lg"
+              onclick="App.submitStaffPin(document.getElementById('pin-login-input').value)">
+        ログイン
+      </button>
+      <p class="text-muted text-sm mt-16 text-center">PINを忘れた場合は店長にリセットを依頼してください</p>
+    </div>
+  </div>
+
+
   <!-- スタッフメニュー画面 -->
   <div id="screen-staff-menu" class="screen hidden">
     <div class="content">

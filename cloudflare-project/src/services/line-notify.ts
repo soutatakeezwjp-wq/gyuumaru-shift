@@ -1,13 +1,14 @@
 // ぎゅう丸シフト管理システム - LINE通知サービス（LineNotifyService.gs の移植）
 
 import * as dao from '../db/dao';
+import type { DB } from '../db/supabase';
 import { SETTING_KEYS } from '../config';
 import { getRequestSummary } from './shift-request';
 import type { ApiResult } from '../types';
 
 // シフト確定通知を送信する
 export async function sendShiftConfirmNotification(
-  db: D1Database, storeId: number, yearMonth: string, baseUrl: string
+  db: DB, storeId: number, yearMonth: string, baseUrl: string
 ): Promise<ApiResult> {
   const settings = await dao.getSettings(db, storeId);
   const token = settings[SETTING_KEYS.LINE_CHANNEL_TOKEN];
@@ -34,7 +35,7 @@ export async function sendShiftConfirmNotification(
 
 // シフト希望リマインド通知を送信する
 export async function sendReminderNotification(
-  db: D1Database, storeId: number, yearMonth: string, baseUrl: string
+  db: DB, storeId: number, yearMonth: string, baseUrl: string
 ): Promise<ApiResult> {
   const settings = await dao.getSettings(db, storeId);
   const token = settings[SETTING_KEYS.LINE_CHANNEL_TOKEN];
@@ -70,7 +71,7 @@ export async function sendReminderNotification(
 }
 
 // LINE通知テスト送信
-export async function testLineNotification(db: D1Database, storeId: number): Promise<ApiResult> {
+export async function testLineNotification(db: DB, storeId: number): Promise<ApiResult> {
   const settings = await dao.getSettings(db, storeId);
   const token = settings[SETTING_KEYS.LINE_CHANNEL_TOKEN];
   const storeName = settings[SETTING_KEYS.STORE_NAME] || 'ぎゅう丸';

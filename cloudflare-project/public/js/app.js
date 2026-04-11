@@ -97,6 +97,11 @@ var App = {
           this.currentStaff = null;
           this.showScreen('staff-select');
           break;
+        case 'staff-pin-login':
+        case 'staff-pin-setup':
+          this._pendingStaff = null;
+          this.showScreen('staff-select');
+          break;
         case 'shift-request':
         case 'shift-request-view':
         case 'shift-view':
@@ -126,25 +131,64 @@ var App = {
     }
   },
 
-  // スタッフを選択する
+  // スタッフを選択する → PIN入力画面に飛ぶ
+  // PIN未設定の場合は「店長にPINを設定してもらってください」と表示
   selectStaff: function(staffId, staffName) {
     var self = this;
-    App.showLoading('ログイン中...');
+    App.showLoading('確認中...');
+    API.staffHasPin(staffId).then(function(result) {
+      App.hideLoading();
+      self._pendingStaff = { id: staffId, name: staffName };
+      if (result.hasPin) {
+        self.showScreen('staff-pin-login');
+      } else {
+        // PINは店長が発行するので、ここではメッセージだけ出して戻す
+        alert(
+          staffName + 'さんのPINはまだ設定されていません。\n\n' +
+          '店長にPINの発行を依頼してください。\n' +
+          '（店長画面の「スタッフ管理」→「PIN発行」から設定できます）'
+        );
+        self._pendingStaff = null;
+      }
+    }).catch(function() {
+      App.hideLoading();
+      App.showToast('通信に失敗しました', 'error');
+    });
+  },
 
-    API.staffLogin(staffId).then(function(result) {
+  // PIN入力でログインする
+  submitStaffPin: function(pin) {
+    var self = this;
+    if (!self._pendingStaff) {
+      App.showToast('スタッフが選択されていません', 'error');
+      return;
+    }
+    if (!/^\d{4}$/.test(pin)) {
+      App.showToast('4桁の数字を入力してください', 'error');
+      return;
+    }
+    App.showLoading('ログイン中...');
+    API.staffLogin(self._pendingStaff.id, pin).then(function(result) {
       App.hideLoading();
       if (result.success) {
         API.setToken(result.token);
         sessionStorage.setItem('gyuumaru_token', result.token);
+        sessionStorage.setItem('gyuumaru_role', result.role || 'staff');
         self.currentStaff = { id: result.staffId, name: result.staffName };
+        self._pendingStaff = null;
         self.showScreen('staff-menu');
       } else {
-        App.showToast(result.message, 'error');
+        App.showToast(result.message || 'PINが一致しません', 'error');
       }
     }).catch(function() {
       App.hideLoading();
       App.showToast('ログインに失敗しました', 'error');
     });
+  },
+
+  // 自己PIN設定は廃止（店長が発行する方式に変更）
+  submitStaffPinSetup: function() {
+    App.showToast('PINは店長が発行する方式に変更されました', 'error');
   },
 
   // ローディング制御

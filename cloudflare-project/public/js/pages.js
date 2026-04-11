@@ -76,6 +76,38 @@ function onShow_staff_select() {
 }
 
 // ========================================
+// スタッフPIN入力画面
+// ========================================
+function onShow_staff_pin_login() {
+  if (App._pendingStaff) {
+    var el = document.getElementById('pin-login-staff-name');
+    if (el) el.textContent = App._pendingStaff.name + ' さん';
+  }
+  var inp = document.getElementById('pin-login-input');
+  if (inp) {
+    inp.value = '';
+    setTimeout(function() { inp.focus(); }, 100);
+    inp.onkeypress = function(e) {
+      if (e.key === 'Enter') App.submitStaffPin(inp.value);
+    };
+  }
+}
+
+// ========================================
+// スタッフPIN初回設定画面
+// ========================================
+function onShow_staff_pin_setup() {
+  if (App._pendingStaff) {
+    var el = document.getElementById('pin-setup-staff-name');
+    if (el) el.textContent = App._pendingStaff.name + ' さん・はじめまして！';
+  }
+  var a = document.getElementById('pin-setup-input');
+  var b = document.getElementById('pin-setup-confirm');
+  if (a) { a.value = ''; setTimeout(function() { a.focus(); }, 100); }
+  if (b) b.value = '';
+}
+
+// ========================================
 // スタッフメニュー
 // ========================================
 function onShow_staff_menu() {
@@ -241,8 +273,41 @@ var ShiftRequest = {
   updateDeadlineInfo: function() {
     var el = document.getElementById('sr-deadline-info');
     if (!el || !App.storeInfo) return;
-    var parts = this.yearMonth.split('-'); var month = parseInt(parts[1]); var prevMonth = month - 1 || 12;
-    el.textContent = month + '月のシフト希望は、' + prevMonth + '月' + App.storeInfo.requestDeadlineDay + '日までに提出してください';
+    var parts = this.yearMonth.split('-');
+    var year = parseInt(parts[0]);
+    var month = parseInt(parts[1]);
+    var prevMonth = month - 1;
+    var prevYear = year;
+    if (prevMonth === 0) { prevMonth = 12; prevYear--; }
+    var deadline = new Date(prevYear, prevMonth - 1, App.storeInfo.requestDeadlineDay, 23, 59, 59);
+    var now = new Date();
+    this.deadlinePassed = now > deadline;
+    var role = sessionStorage.getItem('gyuumaru_role') || 'staff';
+    this.canBypass = (role === 'store_manager' || role === 'headquarters_admin');
+
+    if (this.deadlinePassed && !this.canBypass) {
+      el.className = 'alert alert-warning mb-16';
+      el.innerHTML = '<strong>締切を過ぎています。</strong><br>' +
+        month + '月のシフト希望の提出期限は ' + prevMonth + '月' + App.storeInfo.requestDeadlineDay + '日 でした。<br>' +
+        '変更が必要な場合は <strong>店長に直接ご連絡ください</strong>。システム上からの変更はできません。';
+      // 提出ボタンを無効化
+      var submitBtn = document.querySelector('#screen-shift-request button.btn-primary.btn-block');
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = '締切終了のため提出できません';
+        submitBtn.style.opacity = '0.5';
+      }
+    } else if (this.deadlinePassed && this.canBypass) {
+      el.className = 'alert alert-info mb-16';
+      el.textContent = '締切を過ぎていますが、店長/本部権限で変更可能です。慎重に操作してください。';
+      var submitBtn2 = document.querySelector('#screen-shift-request button.btn-primary.btn-block');
+      if (submitBtn2) { submitBtn2.disabled = false; submitBtn2.style.opacity = '1'; submitBtn2.textContent = 'シフト希望を提出する（店長権限）'; }
+    } else {
+      el.className = 'alert alert-info mb-16';
+      el.textContent = month + '月のシフト希望は、' + prevMonth + '月' + App.storeInfo.requestDeadlineDay + '日までに提出してください';
+      var submitBtn3 = document.querySelector('#screen-shift-request button.btn-primary.btn-block');
+      if (submitBtn3) { submitBtn3.disabled = false; submitBtn3.style.opacity = '1'; submitBtn3.textContent = 'シフト希望を提出する'; }
+    }
   },
 
   openDayModal: function(dateStr) {
@@ -2178,6 +2243,7 @@ var StaffManage = {
       var payInfo = s.employmentType === '正社員' ? App.formatCurrency(s.monthlySalary) + '円/月' : App.formatCurrency(s.hourlyRate) + '円/時';
       html += '<tr><td class="text-bold">' + s.name + ' <span class="text-sm text-muted">[' + pos + '/' + s.employmentType + ']</span></td><td><span class="badge badge-confirmed">' + pos + '</span> <span class="badge badge-draft">' + s.employmentType + '</span></td><td>' + payInfo + '</td>';
       html += '<td><button class="btn btn-outline btn-sm" onclick="StaffManage.edit(\'' + s.id + '\')" style="margin-right:4px">編集</button>';
+      html += '<button class="btn btn-primary btn-sm" onclick="StaffManage.setPin(\'' + s.id + '\', \'' + s.name + '\')" style="margin-right:4px">PIN発行</button>';
       html += '<button class="btn btn-danger btn-sm" onclick="StaffManage.retire(\'' + s.id + '\', \'' + s.name + '\')">退職</button></td></tr>';
     }
     html += '</table></div>';
@@ -2240,12 +2306,63 @@ var StaffManage = {
     }).catch(function() { App.hideLoading(); App.showToast('保存に失敗しました', 'error'); });
   },
 
+  // 店長がスタッフのPINを直接発行する（新機能）
+  setPin: function(staffId, staffName) {
+    var pin = window.prompt(
+      staffName + 'さんに発行する4桁のPINを入力してください。\n\n' +
+      '・必ず4桁の数字にしてください\n' +
+      '・このPINをスタッフに口頭で伝えてください\n' +
+      '・簡単すぎる数字（0000, 1234など）は避けてください'
+    );
+    if (!pin) return;
+    if (!/^\d{4}$/.test(pin)) {
+      App.showToast('4桁の数字で入力してください', 'error');
+      return;
+    }
+    var adminPassword = window.prompt('操作確認のため管理者パスワードを入力してください：');
+    if (!adminPassword) return;
+
+    App.showLoading('PINを発行中...');
+    API.setStaffPin(staffId, pin, adminPassword).then(function(result) {
+      App.hideLoading();
+      if (result.success) {
+        App.showToast(staffName + 'さんのPINを [' + pin + '] に設定しました', 'success');
+      } else {
+        App.showToast(result.message || 'PIN発行に失敗しました', 'error');
+      }
+    }).catch(function() {
+      App.hideLoading();
+      App.showToast('PIN発行に失敗しました', 'error');
+    });
+  },
+
   retire: function(staffId, staffName) {
-    if (!App.confirm(staffName + 'さんを退職処理しますか？\n(データは残りますが、シフト入力やスタッフ選択画面に表示されなくなります)')) return;
-    App.showLoading('処理中...'); var self = this;
-    API.retireStaff(staffId).then(function(result) {
-      App.hideLoading(); if (result.success) { App.showToast(result.message, 'success'); self.load(); } else { App.showToast(result.message, 'error'); }
-    }).catch(function() { App.hideLoading(); App.showToast('退職処理に失敗しました', 'error'); });
+    // 新機能3: 誤操作防止のため管理者パスワードと理由を入力させる
+    var self = this;
+    var warn = staffName + 'さんを退職処理します。\n\n' +
+               '・シフト表やスタッフ選択画面に表示されなくなります\n' +
+               '・過去のデータ（シフト希望・人件費履歴）は保持されます\n' +
+               '・元に戻すには管理者による再登録が必要です\n\n' +
+               '続行するには管理者パスワードの入力が必要です。';
+    if (!App.confirm(warn)) return;
+
+    var adminPassword = window.prompt('管理者パスワードを入力してください：');
+    if (!adminPassword) return;
+    var reason = window.prompt('退職理由（任意・記録用）：', '') || '';
+
+    App.showLoading('退職処理中...');
+    API.retireStaff(staffId, adminPassword, reason).then(function(result) {
+      App.hideLoading();
+      if (result.success) {
+        App.showToast(result.message, 'success');
+        self.load();
+      } else {
+        App.showToast(result.message || '退職処理に失敗しました', 'error');
+      }
+    }).catch(function() {
+      App.hideLoading();
+      App.showToast('退職処理に失敗しました', 'error');
+    });
   }
 };
 

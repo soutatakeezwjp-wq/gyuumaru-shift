@@ -62,14 +62,84 @@ var API = {
     return this._fetch('GET', '/time-slots');
   },
 
-  // 管理者ログイン
+  // 管理者ログイン（店舗パスワード方式・後方互換）
   verifyAdminPassword: function(password) {
     return this._fetch('POST', '/stores/' + this._storeCode + '/admin/login', { password: password });
   },
 
-  // スタッフログイン
-  staffLogin: function(staffId) {
-    return this._fetch('POST', '/stores/' + this._storeCode + '/staff/login', { staffId: staffId });
+  // スタッフPINログイン（新機能1）
+  staffLogin: function(staffId, pin) {
+    return this._fetch('POST', '/stores/' + this._storeCode + '/staff/login', { staffId: staffId, pin: pin });
+  },
+
+  // PIN設定済みかチェック（スタッフ選択画面用）
+  staffHasPin: function(staffId) {
+    return this._fetch('GET', '/stores/' + this._storeCode + '/staff/' + staffId + '/has-pin');
+  },
+
+  // 初回PIN設定（未設定スタッフ用）
+  setupStaffPin: function(staffId, pin) {
+    return this._fetch('POST', '/stores/' + this._storeCode + '/staff/' + staffId + '/setup-pin', { pin: pin });
+  },
+
+  // 管理者によるPINリセット（ハッシュ空にして、次回は再発行が必要）
+  resetStaffPin: function(staffId, adminPassword) {
+    return this._fetch('POST', '/admin/staff/' + staffId + '/reset-pin', { adminPassword: adminPassword });
+  },
+
+  // 店長がスタッフのPINを直接発行する
+  setStaffPin: function(staffId, pin, adminPassword) {
+    return this._fetch('POST', '/admin/staff/' + staffId + '/set-pin', { pin: pin, adminPassword: adminPassword });
+  },
+
+  // 本部管理者・店長のメール＋パスワードログイン（新機能4）
+  managerLogin: function(email, password) {
+    return this._fetch('POST', '/managers/login', { email: email, password: password });
+  },
+
+  // 自分のログイン情報を取得
+  getMe: function() {
+    return this._fetch('GET', '/me');
+  },
+
+  // ========================================
+  // 本部管理者API（新機能4）
+  // ========================================
+
+  hqGetStores: function() {
+    return this._fetch('GET', '/hq/stores');
+  },
+
+  hqGetStoreStaff: function(storeId) {
+    return this._fetch('GET', '/hq/stores/' + storeId + '/staff');
+  },
+
+  hqGetStoreLaborCost: function(storeId, yearMonth) {
+    return this._fetch('GET', '/hq/stores/' + storeId + '/labor-cost/' + yearMonth);
+  },
+
+  hqGetSummary: function(yearMonth) {
+    return this._fetch('GET', '/hq/summary/' + yearMonth);
+  },
+
+  hqCreateManager: function(data) {
+    return this._fetch('POST', '/hq/managers', data);
+  },
+
+  hqListManagers: function() {
+    return this._fetch('GET', '/hq/managers');
+  },
+
+  hqUpdateManager: function(id, data) {
+    return this._fetch('PUT', '/hq/managers/' + id, data);
+  },
+
+  hqResetManagerPassword: function(id, newPassword) {
+    return this._fetch('PUT', '/hq/managers/' + id + '/password', { password: newPassword });
+  },
+
+  hqDeleteManager: function(id) {
+    return this._fetch('DELETE', '/hq/managers/' + id);
   },
 
   // ========================================
@@ -160,8 +230,11 @@ var API = {
     return this._fetch('PUT', '/admin/staff/' + staffId, staffData);
   },
 
-  retireStaff: function(staffId) {
-    return this._fetch('POST', '/admin/staff/' + staffId + '/retire');
+  retireStaff: function(staffId, adminPassword, reason) {
+    return this._fetch('POST', '/admin/staff/' + staffId + '/retire', {
+      adminPassword: adminPassword,
+      reason: reason || ''
+    });
   },
 
   // ========================================

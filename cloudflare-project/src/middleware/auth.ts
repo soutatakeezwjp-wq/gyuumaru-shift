@@ -1,12 +1,16 @@
 // ぎゅう丸シフト管理システム - JWT認証ミドルウェア
 
 import { Context, Next } from 'hono';
-import type { Env } from '../types';
+import type { Env, UserRole } from '../types';
 
 interface JwtPayload {
-  storeId: number;
-  role: 'admin' | 'staff';
+  // 本部管理者: storeId=null
+  // 店長/スタッフ: storeId=自店舗ID
+  storeId: number | null;
+  role: UserRole;
   staffId?: string;
+  managerId?: string;
+  name?: string;
   exp: number;
 }
 
@@ -63,9 +67,20 @@ export async function verifyToken(secret: string, token: string): Promise<JwtPay
   return payload;
 }
 
-// 認証ミドルウェア（管理者用APIに適用）
+type AuthVariables = {
+  storeId: number | null;
+  role: UserRole;
+  staffId?: string;
+  managerId?: string;
+  name?: string;
+};
+
+// 認証ミドルウェア（トークン検証のみ。権限チェックは requireRole で）
 export function authMiddleware() {
-  return async (c: Context<{ Bindings: Env; Variables: { storeId: number; role: string; staffId?: string } }>, next: Next) => {
+  return async (
+    c: Context<{ Bindings: Env; Variables: AuthVariables }>,
+    next: Next
+  ) => {
     const authHeader = c.req.header('Authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return c.json({ success: false, message: '認証が必要です' }, 401);
@@ -81,9 +96,33 @@ export function authMiddleware() {
     c.set('storeId', payload.storeId);
     c.set('role', payload.role);
     if (payload.staffId) c.set('staffId', payload.staffId);
+    if (payload.managerId) c.set('managerId', payload.managerId);
+    if (payload.name) c.set('name', payload.name);
 
     await next();
   };
+}
+
+// 特定ロール以上のみ許可するミドルウェア
+// 階層: headquarters_admin > store_manager > staff
+export function requireRole(...allowed: UserRole[]) {
+  return async (
+    c: Context<{ Bindings: Env; Variables: AuthVariables }>,
+    next: Next
+  ) => {
+    const role = c.get('role');
+    if (!allowed.includes(role)) {
+      return c.json({ success: false, message: 'この操作を実行する権限がありません' }, 403);
+    }
+    await next();
+  };
+}
+
+// 特定店舗のデータへのアクセスを許可するか判定
+// 本部管理者は全店舗OK、店長・スタッフは自店舗のみ
+export function canAccessStore(role: UserRole, myStoreId: number | null, targetStoreId: number): boolean {
+  if (role === 'headquarters_admin') return true;
+  return myStoreId === targetStoreId;
 }
 
 // Base64URL エンコード

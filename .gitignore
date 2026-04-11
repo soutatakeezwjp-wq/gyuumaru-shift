@@ -16,5 +16,9 @@ gas-project/.clasp.json
 .env.local
 .env.production
 
+# Wrangler のローカル秘密ファイル（Supabaseキーなど）
+.dev.vars
+cloudflare-project/.dev.vars
+
 # Claude Code のローカル設定
 .claude/settings.local.json

@@ -1,9 +1,25 @@
 // ぎゅう丸シフト管理システム - 型定義
 
 // Cloudflare Workers の環境変数
+// ※ Supabase 移行後は D1 を使わず、SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY で接続する
 export interface Env {
-  DB: D1Database;
+  SUPABASE_URL: string;
+  SUPABASE_SERVICE_ROLE_KEY: string;
   JWT_SECRET: string;
+}
+
+// 認証ロール（3階層）
+export type UserRole = 'headquarters_admin' | 'store_manager' | 'staff';
+
+// 管理者・店長アカウント
+export interface ManagerAccount {
+  id: string;
+  email: string;
+  name: string;
+  role: 'headquarters_admin' | 'store_manager';
+  storeId: number | null;
+  isActive: boolean;
+  lastLoginAt: string | null;
 }
 
 // 店舗

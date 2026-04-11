@@ -1,21 +1,26 @@
-// ぎゅう丸シフト管理システム - スタッフ管理サービス（StaffService.gs の移植）
+// ぎゅう丸シフト管理システム - スタッフ管理サービス（StaffService.gs の移植・Supabase版）
 
 import * as dao from '../db/dao';
-import { STAFF_STATUS } from '../config';
+import type { DB } from '../db/supabase';
 import type { StaffData, ApiResult } from '../types';
+import * as authService from './auth';
 
 // スタッフ詳細を取得する
-export async function getStaffById(db: D1Database, staffId: string): Promise<StaffData | null> {
+export async function getStaffById(db: DB, staffId: string): Promise<StaffData | null> {
   return dao.getStaffDataById(db, staffId);
 }
 
 // 全スタッフを取得する（在籍者のみ）
-export async function getAllStaff(db: D1Database, storeId: number): Promise<StaffData[]> {
+export async function getAllStaff(db: DB, storeId: number): Promise<StaffData[]> {
   return dao.getAllStaffData(db, storeId, true);
 }
 
 // スタッフを新規登録する
-export async function addStaff(db: D1Database, storeId: number, staffData: Partial<StaffData>): Promise<ApiResult & { staffId?: string }> {
+export async function addStaff(
+  db: DB,
+  storeId: number,
+  staffData: Partial<StaffData>
+): Promise<ApiResult & { staffId?: string }> {
   if (!staffData.name) {
     return { success: false, message: '氏名は必須です' };
   }
@@ -31,7 +36,12 @@ export async function addStaff(db: D1Database, storeId: number, staffData: Parti
 }
 
 // スタッフ情報を更新する
-export async function updateStaff(db: D1Database, storeId: number, staffId: string, staffData: Partial<StaffData>): Promise<ApiResult> {
+export async function updateStaff(
+  db: DB,
+  storeId: number,
+  staffId: string,
+  staffData: Partial<StaffData>
+): Promise<ApiResult> {
   const result = await dao.updateStaffData(db, staffId, staffData);
   if (result) {
     await dao.addLog(db, storeId, '管理者', 'スタッフ更新', staffId);
@@ -40,17 +50,32 @@ export async function updateStaff(db: D1Database, storeId: number, staffId: stri
   return { success: false, message: 'スタッフが見つかりません' };
 }
 
-// スタッフを退職処理する（論理削除）
-export async function retireStaff(db: D1Database, storeId: number, staffId: string): Promise<ApiResult> {
+// スタッフを退職処理する（論理削除・管理者パスワード必須）
+// adminPassword: 店長 or 本部管理者のパスワード
+// operator: ログに残す処理者の名前
+export async function retireStaffWithAuth(
+  db: DB,
+  storeId: number,
+  staffId: string,
+  adminPassword: string,
+  operator: string,
+  reason: string
+): Promise<ApiResult> {
+  // 管理者パスワードを検証する（店舗ごとの管理者パスワード）
+  const passwordOk = await authService.verifyAdminPassword(db, storeId, adminPassword);
+  if (!passwordOk) {
+    return { success: false, message: '管理者パスワードが正しくありません' };
+  }
+
   const staff = await dao.getStaffDataById(db, staffId);
   if (!staff) {
     return { success: false, message: 'スタッフが見つかりません' };
   }
 
-  const result = await dao.updateStaffData(db, staffId, { status: STAFF_STATUS.RETIRED });
+  const result = await dao.retireStaff(db, staffId, operator, reason);
   if (result) {
-    await dao.addLog(db, storeId, '管理者', 'スタッフ退職', staff.name + ' (' + staffId + ')');
-    return { success: true, message: staff.name + 'さんを退職処理しました' };
+    await dao.addLog(db, storeId, operator, 'スタッフ退職', staff.name + ' (' + staffId + ') 理由:' + reason);
+    return { success: true, message: staff.name + 'さんを退職処理しました（データは保持されます）' };
   }
   return { success: false, message: '処理に失敗しました' };
 }

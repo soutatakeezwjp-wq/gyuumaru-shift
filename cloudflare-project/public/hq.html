@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>本部管理ポータル - ぎゅう丸シフト管理</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    /* HQポータル専用の色味（通常画面と区別するため落ち着いたネイビー系） */
+    :root {
+      --hq-primary: #1A3A5F;
+      --hq-accent: #4A7BA8;
+    }
+    body { background: #F5F6FA; }
+    .hq-header {
+      background: var(--hq-primary);
+      color: #fff;
+      padding: 16px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .hq-header h1 { font-size: 1.2rem; margin: 0; }
+    .hq-header .hq-badge {
+      background: #D4AF37;
+      color: #1A3A5F;
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: bold;
+      margin-left: 12px;
+    }
+    .hq-container { max-width: 1200px; margin: 32px auto; padding: 0 16px; }
+    .hq-card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 24px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.05);
+    }
+    .hq-card h2 {
+      color: var(--hq-primary);
+      border-bottom: 2px solid var(--hq-accent);
+      padding-bottom: 8px;
+      margin-bottom: 16px;
+    }
+    .hq-btn {
+      background: var(--hq-primary);
+      color: #fff;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.95rem;
+      font-weight: 500;
+    }
+    .hq-btn:hover { background: var(--hq-accent); }
+    .hq-btn-danger { background: #C0392B; }
+    .hq-btn-danger:hover { background: #E74C3C; }
+    .hq-btn-sm { padding: 6px 12px; font-size: 0.85rem; }
+
+    .hq-login-box {
+      max-width: 420px;
+      margin: 100px auto;
+      background: #fff;
+      padding: 40px;
+      border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+    }
+    .hq-login-box h2 { color: var(--hq-primary); margin-bottom: 8px; }
+    .hq-login-box p.desc { color: #666; margin-bottom: 24px; font-size: 0.9rem; }
+    .hq-form-group { margin-bottom: 16px; }
+    .hq-form-group label { display: block; margin-bottom: 6px; font-weight: 500; color: #333; }
+    .hq-form-group input, .hq-form-group select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #D1D5DB;
+      border-radius: 6px;
+      font-size: 1rem;
+    }
+    .hq-form-group input:focus, .hq-form-group select:focus {
+      outline: none;
+      border-color: var(--hq-accent);
+    }
+
+    .hq-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 8px;
+    }
+    .hq-table th {
+      background: #F5F6FA;
+      padding: 12px;
+      text-align: left;
+      border-bottom: 2px solid var(--hq-accent);
+      color: var(--hq-primary);
+    }
+    .hq-table td {
+      padding: 12px;
+      border-bottom: 1px solid #E5E7EB;
+    }
+    .hq-table tr:hover { background: #FAFBFC; }
+
+    .hq-stat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .hq-stat {
+      background: linear-gradient(135deg, var(--hq-primary), var(--hq-accent));
+      color: #fff;
+      padding: 20px;
+      border-radius: 10px;
+    }
+    .hq-stat .label { font-size: 0.85rem; opacity: 0.9; }
+    .hq-stat .value { font-size: 1.8rem; font-weight: bold; margin-top: 4px; }
+
+    .hq-store-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 12px;
+    }
+    .hq-store-card {
+      border: 1px solid #E5E7EB;
+      border-radius: 8px;
+      padding: 16px;
+      background: #fff;
+    }
+    .hq-store-card h3 { color: var(--hq-primary); margin-bottom: 4px; }
+    .hq-store-card .code { color: #999; font-size: 0.8rem; }
+    .hq-store-card .cost { font-size: 1.4rem; font-weight: bold; color: #333; margin-top: 8px; }
+
+    .hq-alert {
+      padding: 12px 16px;
+      border-radius: 6px;
+      margin-bottom: 16px;
+      font-size: 0.9rem;
+    }
+    .hq-alert-error { background: #FEE2E2; color: #991B1B; border: 1px solid #FCA5A5; }
+    .hq-alert-success { background: #D1FAE5; color: #065F46; border: 1px solid #6EE7B7; }
+
+    .hq-role-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 0.75rem;
+      font-weight: bold;
+    }
+    .hq-role-hq { background: #D4AF37; color: #1A3A5F; }
+    .hq-role-mgr { background: #DBEAFE; color: #1E40AF; }
+
+    .hidden { display: none !important; }
+    .hq-loading { text-align: center; padding: 40px; color: #666; }
+  </style>
+</head>
+<body>
+  <!-- ログイン画面 -->
+  <div id="hq-login-screen" class="hq-login-box">
+    <h2>🏢 本部管理ポータル</h2>
+    <p class="desc">ぎゅう丸シフト管理システム / 本部管理者専用</p>
+    <div id="hq-login-error" class="hq-alert hq-alert-error hidden"></div>
+    <div class="hq-form-group">
+      <label>メールアドレス</label>
+      <input type="email" id="hq-email" placeholder="hq@gyuumaru.jp" autocomplete="username">
+    </div>
+    <div class="hq-form-group">
+      <label>パスワード</label>
+      <input type="password" id="hq-password" placeholder="••••••••" autocomplete="current-password" onkeypress="if(event.key==='Enter')HQ.login()">
+    </div>
+    <button class="hq-btn" style="width:100%;padding:12px;font-size:1rem" onclick="HQ.login()">ログイン</button>
+  </div>
+
+  <!-- メイン画面 -->
+  <div id="hq-main-screen" class="hidden">
+    <div class="hq-header">
+      <h1>ぎゅう丸シフト管理 <span class="hq-badge">本部</span></h1>
+      <div>
+        <span id="hq-current-user" style="margin-right:16px;font-size:0.9rem"></span>
+        <button class="hq-btn hq-btn-sm" onclick="HQ.logout()">ログアウト</button>
+      </div>
+    </div>
+
+    <div class="hq-container">
+      <!-- 全社サマリー -->
+      <div class="hq-card">
+        <h2>📊 全店舗サマリー</h2>
+        <div style="margin-bottom:16px">
+          <label>対象月: </label>
+          <input type="month" id="hq-target-month" onchange="HQ.loadSummary()">
+        </div>
+        <div class="hq-stat-grid" id="hq-stats"></div>
+        <h3 style="margin-top:24px;margin-bottom:12px;color:#333">店舗別内訳</h3>
+        <div class="hq-store-grid" id="hq-store-grid"></div>
+      </div>
+
+      <!-- 管理者・店長アカウント管理 -->
+      <div class="hq-card">
+        <h2>👥 管理者・店長アカウント</h2>
+        <button class="hq-btn" onclick="HQ.showCreateModal()">+ 新規アカウント作成</button>
+        <div id="hq-managers-list" style="margin-top:16px"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 新規管理者作成モーダル -->
+  <div id="hq-create-modal" class="hidden" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:100;display:none;align-items:center;justify-content:center">
+    <div class="hq-card" style="max-width:480px;width:90%;margin:0">
+      <h2>新規アカウント作成</h2>
+      <div id="hq-create-error" class="hq-alert hq-alert-error hidden"></div>
+      <div class="hq-form-group">
+        <label>役割</label>
+        <select id="hq-new-role" onchange="HQ.onRoleChange()">
+          <option value="store_manager">店長（特定の店舗担当）</option>
+          <option value="headquarters_admin">本部管理者（全店舗）</option>
+        </select>
+      </div>
+      <div class="hq-form-group" id="hq-new-store-group">
+        <label>担当店舗</label>
+        <select id="hq-new-store"></select>
+      </div>
+      <div class="hq-form-group">
+        <label>氏名</label>
+        <input type="text" id="hq-new-name" placeholder="例: 山田太郎">
+      </div>
+      <div class="hq-form-group">
+        <label>メールアドレス</label>
+        <input type="email" id="hq-new-email" placeholder="tanaka@gyuumaru.jp">
+      </div>
+      <div class="hq-form-group">
+        <label>初期パスワード (8文字以上)</label>
+        <input type="text" id="hq-new-password" placeholder="初期パスワード">
+        <p style="font-size:0.8rem;color:#666;margin-top:4px">※このパスワードは作成時にメモして、本人に口頭で伝えてください</p>
+      </div>
+      <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:16px">
+        <button class="hq-btn" style="background:#6B7280" onclick="HQ.hideCreateModal()">キャンセル</button>
+        <button class="hq-btn" onclick="HQ.createManager()">作成</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ===========================================
+    // HQ ポータル JavaScript
+    // ===========================================
+    var HQ = {
+      token: '',
+      currentUser: null,
+      stores: [],
+
+      init: function() {
+        // トークン復元
+        var saved = sessionStorage.getItem('gyuumaru_hq_token');
+        if (saved) {
+          this.token = saved;
+          this.showMain();
+          this.loadInitial();
+        } else {
+          this.showLogin();
+        }
+      },
+
+      _fetch: function(method, path, body) {
+        var headers = { 'Content-Type': 'application/json' };
+        if (this.token) headers['Authorization'] = 'Bearer ' + this.token;
+        var opts = { method: method, headers: headers };
+        if (body !== undefined) opts.body = JSON.stringify(body);
+        var self = this;
+        return fetch('/api' + path, opts).then(function(res) {
+          if (res.status === 401) {
+            sessionStorage.removeItem('gyuumaru_hq_token');
+            self.token = '';
+            self.showLogin();
+            throw new Error('認証切れ');
+          }
+          if (res.status === 403) {
+            alert('この操作を行う権限がありません');
+          }
+          return res.json();
+        });
+      },
+
+      login: function() {
+        var email = document.getElementById('hq-email').value;
+        var password = document.getElementById('hq-password').value;
+        var err = document.getElementById('hq-login-error');
+        err.classList.add('hidden');
+
+        if (!email || !password) {
+          err.textContent = 'メールアドレスとパスワードを入力してください';
+          err.classList.remove('hidden');
+          return;
+        }
+
+        var self = this;
+        fetch('/api/managers/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: email, password: password })
+        }).then(function(res) { return res.json(); }).then(function(result) {
+          if (result.success && result.role === 'headquarters_admin') {
+            self.token = result.token;
+            sessionStorage.setItem('gyuumaru_hq_token', result.token);
+            self.currentUser = { name: result.name, role: result.role };
+            self.showMain();
+            self.loadInitial();
+          } else if (result.success) {
+            err.textContent = '本部管理者権限がありません。店長アカウントは店舗ページからログインしてください。';
+            err.classList.remove('hidden');
+          } else {
+            err.textContent = result.message || 'ログインに失敗しました';
+            err.classList.remove('hidden');
+          }
+        }).catch(function() {
+          err.textContent = '通信エラーが発生しました';
+          err.classList.remove('hidden');
+        });
+      },
+
+      logout: function() {
+        sessionStorage.removeItem('gyuumaru_hq_token');
+        this.token = '';
+        location.reload();
+      },
+
+      showLogin: function() {
+        document.getElementById('hq-login-screen').classList.remove('hidden');
+        document.getElementById('hq-main-screen').classList.add('hidden');
+      },
+      showMain: function() {
+        document.getElementById('hq-login-screen').classList.add('hidden');
+        document.getElementById('hq-main-screen').classList.remove('hidden');
+      },
+
+      loadInitial: function() {
+        var self = this;
+        // 現在の月をデフォルトに
+        var d = new Date();
+        var m = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2);
+        document.getElementById('hq-target-month').value = m;
+
+        // ユーザー情報
+        this._fetch('GET', '/me').then(function(me) {
+          self.currentUser = me;
+          document.getElementById('hq-current-user').textContent = '👤 ' + (me.name || '本部管理者');
+        });
+
+        // 店舗一覧（管理者作成モーダル用）
+        this._fetch('GET', '/hq/stores').then(function(stores) {
+          self.stores = stores;
+          var sel = document.getElementById('hq-new-store');
+          sel.innerHTML = '';
+          for (var i = 0; i < stores.length; i++) {
+            var opt = document.createElement('option');
+            opt.value = stores[i].id;
+            opt.textContent = stores[i].name;
+            sel.appendChild(opt);
+          }
+        });
+
+        this.loadSummary();
+        this.loadManagers();
+      },
+
+      loadSummary: function() {
+        var ym = document.getElementById('hq-target-month').value;
+        if (!ym) return;
+        var self = this;
+        document.getElementById('hq-store-grid').innerHTML = '<div class="hq-loading">読み込み中...</div>';
+        this._fetch('GET', '/hq/summary/' + ym).then(function(result) {
+          // 全社統計
+          var totalStaff = 0;
+          for (var i = 0; i < result.stores.length; i++) totalStaff += result.stores[i].staffCount;
+          document.getElementById('hq-stats').innerHTML =
+            '<div class="hq-stat"><div class="label">店舗数</div><div class="value">' + result.stores.length + '</div></div>' +
+            '<div class="hq-stat"><div class="label">人件費合計</div><div class="value">¥' + Math.round(result.grandTotal).toLocaleString() + '</div></div>';
+
+          // 店舗カード
+          var gridHtml = '';
+          for (var j = 0; j < result.stores.length; j++) {
+            var s = result.stores[j];
+            gridHtml += '<div class="hq-store-card">' +
+              '<h3>' + s.storeName + '</h3>' +
+              '<div class="code">' + s.storeCode + '</div>' +
+              '<div class="cost">¥' + Math.round(s.totalCost).toLocaleString() + '</div>' +
+              '</div>';
+          }
+          document.getElementById('hq-store-grid').innerHTML = gridHtml || '<div class="hq-loading">データがありません</div>';
+        });
+      },
+
+      loadManagers: function() {
+        var self = this;
+        document.getElementById('hq-managers-list').innerHTML = '<div class="hq-loading">読み込み中...</div>';
+        this._fetch('GET', '/hq/managers').then(function(list) {
+          if (!list || list.length === 0) {
+            document.getElementById('hq-managers-list').innerHTML = '<p style="color:#666">まだ管理者アカウントがありません</p>';
+            return;
+          }
+          var html = '<table class="hq-table"><tr><th>氏名</th><th>メール</th><th>役割</th><th>担当店舗</th><th>操作</th></tr>';
+          for (var i = 0; i < list.length; i++) {
+            var m = list[i];
+            var roleBadge = m.role === 'headquarters_admin'
+              ? '<span class="hq-role-badge hq-role-hq">本部管理者</span>'
+              : '<span class="hq-role-badge hq-role-mgr">店長</span>';
+            var storeName = m.storeId ? self._findStoreName(m.storeId) : '-';
+            html += '<tr><td>' + (m.name || '-') + '</td>' +
+              '<td>' + m.email + '</td>' +
+              '<td>' + roleBadge + '</td>' +
+              '<td>' + storeName + '</td>' +
+              '<td>' +
+                '<button class="hq-btn hq-btn-sm" onclick="HQ.resetPassword(\'' + m.id + '\', \'' + (m.name || m.email) + '\')">パスワードリセット</button> ' +
+                '<button class="hq-btn hq-btn-sm hq-btn-danger" onclick="HQ.deleteManager(\'' + m.id + '\', \'' + (m.name || m.email) + '\')">削除</button>' +
+              '</td></tr>';
+          }
+          html += '</table>';
+          document.getElementById('hq-managers-list').innerHTML = html;
+        });
+      },
+
+      _findStoreName: function(storeId) {
+        for (var i = 0; i < this.stores.length; i++) {
+          if (this.stores[i].id === storeId) return this.stores[i].name;
+        }
+        return '店舗ID:' + storeId;
+      },
+
+      showCreateModal: function() {
+        document.getElementById('hq-create-modal').style.display = 'flex';
+        document.getElementById('hq-create-modal').classList.remove('hidden');
+        document.getElementById('hq-new-name').value = '';
+        document.getElementById('hq-new-email').value = '';
+        document.getElementById('hq-new-password').value = '';
+        document.getElementById('hq-new-role').value = 'store_manager';
+        document.getElementById('hq-create-error').classList.add('hidden');
+        this.onRoleChange();
+      },
+
+      hideCreateModal: function() {
+        document.getElementById('hq-create-modal').style.display = 'none';
+      },
+
+      onRoleChange: function() {
+        var role = document.getElementById('hq-new-role').value;
+        var storeGroup = document.getElementById('hq-new-store-group');
+        if (role === 'headquarters_admin') {
+          storeGroup.style.display = 'none';
+        } else {
+          storeGroup.style.display = 'block';
+        }
+      },
+
+      createManager: function() {
+        var role = document.getElementById('hq-new-role').value;
+        var name = document.getElementById('hq-new-name').value.trim();
+        var email = document.getElementById('hq-new-email').value.trim();
+        var password = document.getElementById('hq-new-password').value;
+        var storeId = role === 'store_manager'
+          ? parseInt(document.getElementById('hq-new-store').value)
+          : null;
+        var err = document.getElementById('hq-create-error');
+
+        if (!name || !email || !password) {
+          err.textContent = 'すべての必須項目を入力してください';
+          err.classList.remove('hidden');
+          return;
+        }
+        if (password.length < 8) {
+          err.textContent = 'パスワードは8文字以上にしてください';
+          err.classList.remove('hidden');
+          return;
+        }
+
+        var self = this;
+        this._fetch('POST', '/hq/managers', {
+          email: email, password: password, name: name, role: role, storeId: storeId
+        }).then(function(result) {
+          if (result.ok) {
+            self.hideCreateModal();
+            alert('アカウントを作成しました\n\n【作成情報】\nメール: ' + email + '\n初期パスワード: ' + password + '\n\nこの情報を本人に口頭で伝えてください。');
+            self.loadManagers();
+          } else {
+            err.textContent = result.message || '作成に失敗しました';
+            err.classList.remove('hidden');
+          }
+        });
+      },
+
+      resetPassword: function(id, name) {
+        var newPass = window.prompt(name + 'さんの新しいパスワードを入力してください（8文字以上）：');
+        if (!newPass) return;
+        if (newPass.length < 8) {
+          alert('パスワードは8文字以上にしてください');
+          return;
+        }
+        var self = this;
+        this._fetch('PUT', '/hq/managers/' + id + '/password', { password: newPass }).then(function(result) {
+          if (result.success) {
+            alert(name + 'さんのパスワードを「' + newPass + '」にリセットしました。本人に口頭で伝えてください。');
+          } else {
+            alert(result.message || 'リセットに失敗しました');
+          }
+        });
+      },
+
+      deleteManager: function(id, name) {
+        if (!confirm(name + 'さんのアカウントを削除しますか？\n削除すると、このアカウントはログインできなくなります。')) return;
+        var self = this;
+        this._fetch('DELETE', '/hq/managers/' + id).then(function(result) {
+          if (result.success) {
+            alert('削除しました');
+            self.loadManagers();
+          } else {
+            alert(result.message || '削除に失敗しました');
+          }
+        });
+      }
+    };
+
+    HQ.init();
+  </script>
+</body>
+</html>

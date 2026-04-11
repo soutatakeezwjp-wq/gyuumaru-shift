@@ -1,20 +1,30 @@
-// ぎゅう丸シフト管理システム - 認証サービス（AuthService.gs の移植）
+// ぎゅう丸シフト管理システム - 認証サービス（Supabase版）
 
 import * as dao from '../db/dao';
-import { SETTING_KEYS } from '../config';
+import type { DB } from '../db/supabase';
+import { SETTING_KEYS, STAFF_STATUS } from '../config';
 import { hashPassword } from '../utils';
-import type { StaffListItem, StoreInfo, TimeSlotStaffing } from '../types';
+import type { StaffListItem, StoreInfo, TimeSlotStaffing, ManagerAccount } from '../types';
 
-// スタッフ選択画面用の一覧を取得する（ID, 名前, フリガナのみ）
-export async function getStaffList(db: D1Database, storeId: number): Promise<StaffListItem[]> {
+// スタッフ選択画面用の一覧を取得する（ID, 名前, フリガナ, PIN設定済みかどうか）
+export async function getStaffList(
+  db: DB,
+  storeId: number
+): Promise<Array<StaffListItem & { pinSet: boolean }>> {
   const allStaff = await dao.getAllStaffData(db, storeId, true);
   return allStaff
-    .map(s => ({ id: s.id, name: s.name, kana: s.kana, position: s.position }))
+    .map((s) => ({
+      id: s.id,
+      name: s.name,
+      kana: s.kana,
+      position: s.position,
+      pinSet: false, // PIN の有無は PIN check 用の別エンドポイントで返す
+    }))
     .sort((a, b) => (a.kana || '').localeCompare(b.kana || '', 'ja'));
 }
 
-// 管理者パスワードを検証する
-export async function verifyAdminPassword(db: D1Database, storeId: number, password: string): Promise<boolean> {
+// 管理者パスワードを検証する（店舗ごとの既存の管理者パスワード）
+export async function verifyAdminPassword(db: DB, storeId: number, password: string): Promise<boolean> {
   const storedHash = await dao.getSetting(db, storeId, SETTING_KEYS.ADMIN_PASSWORD);
   if (!storedHash) return false;
   const inputHash = await hashPassword(password);
@@ -22,14 +32,14 @@ export async function verifyAdminPassword(db: D1Database, storeId: number, passw
 }
 
 // 管理者パスワードを設定する
-export async function setAdminPassword(db: D1Database, storeId: number, password: string): Promise<void> {
+export async function setAdminPassword(db: DB, storeId: number, password: string): Promise<void> {
   const hashed = await hashPassword(password);
   await dao.updateSetting(db, storeId, SETTING_KEYS.ADMIN_PASSWORD, hashed);
   await dao.addLog(db, storeId, '管理者', 'パスワード変更', '管理者パスワードが変更されました');
 }
 
 // 現在の店舗情報を取得する
-export async function getCurrentStoreInfo(db: D1Database, storeId: number): Promise<StoreInfo> {
+export async function getCurrentStoreInfo(db: DB, storeId: number): Promise<StoreInfo> {
   const settings = await dao.getSettings(db, storeId);
   return {
     storeName: settings[SETTING_KEYS.STORE_NAME] || '未設定',
@@ -64,14 +74,15 @@ function parseTimeSlotStaffing(json: string | undefined): TimeSlotStaffing[] {
   try {
     const parsed = JSON.parse(json);
     if (Array.isArray(parsed) && parsed.length > 0) {
-      // hall/kitchenフィールドがない場合はweekday値をフォールバック
       return parsed.map((s: TimeSlotStaffing) => ({
         ...s,
         hall: s.hall ?? s.weekdayHall ?? 3,
         kitchen: s.kitchen ?? s.weekdayKitchen ?? 2,
       }));
     }
-  } catch {}
+  } catch {
+    /* ignore */
+  }
   return defaults;
 }
 
@@ -83,9 +94,136 @@ export function isRequestPeriodOpen(yearMonth: string, deadlineDay: number): boo
 
   let prevMonth = targetMonth - 1;
   let prevYear = targetYear;
-  if (prevMonth === 0) { prevMonth = 12; prevYear--; }
+  if (prevMonth === 0) {
+    prevMonth = 12;
+    prevYear--;
+  }
 
   const deadlineDate = new Date(prevYear, prevMonth - 1, deadlineDay, 23, 59, 59);
   const now = new Date();
   return now <= deadlineDate;
+}
+
+// =====================================================================
+// 新機能 1: スタッフ4桁PIN ログイン
+// =====================================================================
+
+const PIN_LOCKOUT_THRESHOLD = 5; // 5回連続失敗で15分ロック
+const PIN_LOCKOUT_MINUTES = 15;
+
+// PINを新規設定する（初回 or 再設定）
+export async function setStaffPin(db: DB, staffId: string, pin: string): Promise<{ success: boolean; message: string }> {
+  if (!/^\d{4}$/.test(pin)) {
+    return { success: false, message: '4桁の数字で設定してください' };
+  }
+  const pinHash = await hashPassword(pin);
+  const ok = await dao.setStaffPinHash(db, staffId, pinHash);
+  if (!ok) return { success: false, message: 'スタッフが見つかりません' };
+  return { success: true, message: 'PINを設定しました' };
+}
+
+// スタッフがPINを既に設定しているか確認する
+export async function hasPinSet(db: DB, staffId: string): Promise<boolean> {
+  const info = await dao.getStaffPinInfo(db, staffId);
+  return !!info && !!info.pinHash;
+}
+
+// PINで認証する
+export async function verifyStaffPin(
+  db: DB,
+  staffId: string,
+  pin: string
+): Promise<{ ok: boolean; message: string; locked?: boolean }> {
+  const info = await dao.getStaffPinInfo(db, staffId);
+  if (!info) {
+    return { ok: false, message: 'スタッフが見つかりません、または退職済みです' };
+  }
+
+  // ロック中チェック
+  if (info.lockedUntil) {
+    const until = new Date(info.lockedUntil);
+    if (until > new Date()) {
+      const leftMin = Math.ceil((until.getTime() - Date.now()) / 60000);
+      return { ok: false, locked: true, message: `PIN入力が多すぎます。約${leftMin}分後に再度お試しください。` };
+    }
+  }
+
+  if (!info.pinHash) {
+    return { ok: false, message: 'PINが未設定です。初回ログインから設定してください。' };
+  }
+
+  const inputHash = await hashPassword(pin);
+  if (inputHash !== info.pinHash) {
+    const newCount = info.failedCount + 1;
+    let lockedUntil: string | null = null;
+    if (newCount >= PIN_LOCKOUT_THRESHOLD) {
+      lockedUntil = new Date(Date.now() + PIN_LOCKOUT_MINUTES * 60000).toISOString();
+    }
+    await dao.incrementPinFailure(db, staffId, lockedUntil);
+    if (lockedUntil) {
+      return { ok: false, locked: true, message: `PINを${PIN_LOCKOUT_THRESHOLD}回連続で間違えたため、${PIN_LOCKOUT_MINUTES}分間ロックされました` };
+    }
+    return { ok: false, message: `PINが一致しません（残り${PIN_LOCKOUT_THRESHOLD - newCount}回）` };
+  }
+
+  // 成功したら失敗カウントをリセット
+  if (info.failedCount > 0 || info.lockedUntil) {
+    await dao.resetPinFailure(db, staffId);
+  }
+  return { ok: true, message: 'PIN認証に成功しました' };
+}
+
+// =====================================================================
+// 新機能 4: 3階層ロール（本部管理者・店長）のログイン
+// =====================================================================
+
+export async function loginManager(
+  db: DB,
+  email: string,
+  password: string
+): Promise<{ ok: boolean; manager?: ManagerAccount; message: string }> {
+  const row = await dao.getManagerByEmail(db, email);
+  if (!row) {
+    return { ok: false, message: 'メールアドレスまたはパスワードが正しくありません' };
+  }
+  const inputHash = await hashPassword(password);
+  if (inputHash !== row.passwordHash) {
+    return { ok: false, message: 'メールアドレスまたはパスワードが正しくありません' };
+  }
+  await dao.touchManagerLogin(db, row.manager.id);
+  return { ok: true, manager: row.manager, message: 'ログインしました' };
+}
+
+export async function registerManager(
+  db: DB,
+  email: string,
+  password: string,
+  name: string,
+  role: 'headquarters_admin' | 'store_manager',
+  storeId: number | null
+): Promise<{ ok: boolean; managerId?: string; message: string }> {
+  if (!email || !password || !name) {
+    return { ok: false, message: '必須項目が未入力です' };
+  }
+  if (password.length < 8) {
+    return { ok: false, message: 'パスワードは8文字以上にしてください' };
+  }
+  if (role === 'store_manager' && storeId == null) {
+    return { ok: false, message: '店長アカウントには店舗の指定が必要です' };
+  }
+  if (role === 'headquarters_admin' && storeId != null) {
+    return { ok: false, message: '本部管理者に店舗を指定することはできません' };
+  }
+  const passwordHash = await hashPassword(password);
+  try {
+    const id = await dao.createManager(db, email, passwordHash, name, role, storeId);
+    await dao.addLog(db, storeId, 'system', '管理者アカウント作成', `${role}: ${email}`);
+    return { ok: true, managerId: id, message: 'アカウントを作成しました' };
+  } catch (e: unknown) {
+    const msg = (e as { message?: string })?.message || '';
+    if (msg.includes('duplicate key') || msg.includes('managers_email_key')) {
+      return { ok: false, message: 'そのメールアドレスは既に使われています' };
+    }
+    throw e;
+  }
 }
