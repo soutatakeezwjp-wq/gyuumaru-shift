@@ -104,13 +104,97 @@ export function calcBreakMinutes(workHours: number): number {
   return 0;
 }
 
-// パスワードをSHA-256でハッシュ化する（Web Crypto API版）
+// =====================================================================
+// パスワード/PINハッシュ
+// =====================================================================
+// 方針: ソルト付き PBKDF2-SHA256 を使う。保存形式は
+//   pbkdf2$<iterations>$<saltHex>$<hashHex>
+// 旧形式（生のSHA-256: 64文字のhex）も verifyPassword 側で検証可能にして
+// 既存DBとの互換を保つ。新しく作られるハッシュは全て新形式になる。
+
+const PBKDF2_ITERATIONS = 100_000; // 2026年時点でPBKDF2-SHA256の現実的な下限
+const SALT_BYTES = 16;
+const HASH_BYTES = 32;
+
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes)
+    .map((b) => ('0' + b.toString(16)).slice(-2))
+    .join('');
+}
+
+function hexToBytes(hex: string): Uint8Array {
+  const bytes = new Uint8Array(Math.floor(hex.length / 2));
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
+  }
+  return bytes;
+}
+
+async function pbkdf2Derive(
+  password: string,
+  salt: Uint8Array,
+  iterations: number
+): Promise<Uint8Array> {
+  const encoder = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(password),
+    { name: 'PBKDF2' },
+    false,
+    ['deriveBits']
+  );
+  const bits = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', hash: 'SHA-256', salt, iterations },
+    keyMaterial,
+    HASH_BYTES * 8
+  );
+  return new Uint8Array(bits);
+}
+
+// 定数時間で文字列を比較する（タイミング攻撃対策）
+// 長さが違っても一定時間を使う（ただし長さ情報は漏れる。これは許容）
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let result = 0;
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return result === 0;
+}
+
+// パスワード/PINをハッシュ化する（新形式: PBKDF2 + salt）
 export async function hashPassword(password: string): Promise<string> {
+  const salt = new Uint8Array(SALT_BYTES);
+  crypto.getRandomValues(salt);
+  const derived = await pbkdf2Derive(password, salt, PBKDF2_ITERATIONS);
+  return `pbkdf2$${PBKDF2_ITERATIONS}$${bytesToHex(salt)}$${bytesToHex(derived)}`;
+}
+
+// 入力されたパスワード/PINを保存されたハッシュと比較する。
+// 新形式（pbkdf2$...）と旧形式（64文字のSHA-256 hex）の両方に対応する。
+// 認証箇所では `===` ではなく必ずこの関数を使うこと（タイミング攻撃対策）。
+export async function verifyPassword(password: string, stored: string): Promise<boolean> {
+  if (!stored) return false;
+
+  if (stored.startsWith('pbkdf2$')) {
+    // 新形式: pbkdf2$iterations$salt$hash
+    const parts = stored.split('$');
+    if (parts.length !== 4) return false;
+    const iterations = parseInt(parts[1]);
+    if (!Number.isFinite(iterations) || iterations <= 0) return false;
+    const salt = hexToBytes(parts[2]);
+    const derived = await pbkdf2Derive(password, salt, iterations);
+    return timingSafeEqual(bytesToHex(derived), parts[3]);
+  }
+
+  // 旧形式: 生の SHA-256 hex（64文字）。既存DBとの互換のため残す。
+  // 次期バージョンで運用データが全て新形式に移行したら削除する予定。
   const encoder = new TextEncoder();
   const data = encoder.encode(password);
   const hashBuffer = await crypto.subtle.digest('SHA-256', data);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => ('0' + b.toString(16)).slice(-2)).join('');
+  const inputHash = hashArray.map((b) => ('0' + b.toString(16)).slice(-2)).join('');
+  return timingSafeEqual(inputHash, stored);
 }
 
 // 指定した日付が含まれる週の月曜日を取得する

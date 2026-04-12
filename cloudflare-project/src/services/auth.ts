@@ -3,7 +3,7 @@
 import * as dao from '../db/dao';
 import type { DB } from '../db/supabase';
 import { SETTING_KEYS, STAFF_STATUS } from '../config';
-import { hashPassword } from '../utils';
+import { hashPassword, verifyPassword } from '../utils';
 import type { StaffListItem, StoreInfo, TimeSlotStaffing, ManagerAccount } from '../types';
 
 // スタッフ選択画面用の一覧を取得する（ID, 名前, フリガナ, PIN設定済みかどうか）
@@ -27,8 +27,8 @@ export async function getStaffList(
 export async function verifyAdminPassword(db: DB, storeId: number, password: string): Promise<boolean> {
   const storedHash = await dao.getSetting(db, storeId, SETTING_KEYS.ADMIN_PASSWORD);
   if (!storedHash) return false;
-  const inputHash = await hashPassword(password);
-  return storedHash === inputHash;
+  // 定数時間比較 + 旧SHA-256/新PBKDF2の両対応
+  return verifyPassword(password, storedHash);
 }
 
 // 管理者パスワードを設定する
@@ -57,7 +57,9 @@ export async function getCurrentStoreInfo(db: DB, storeId: number): Promise<Stor
     weekdayKitchenMin: parseInt(settings[SETTING_KEYS.WEEKDAY_KITCHEN_MIN]) || 2,
     weekendHallMin: parseInt(settings[SETTING_KEYS.WEEKEND_HALL_MIN]) || 5,
     weekendKitchenMin: parseInt(settings[SETTING_KEYS.WEEKEND_KITCHEN_MIN]) || 4,
-    fulltimeMonthlyLimit: parseInt(settings[SETTING_KEYS.FULLTIME_MONTHLY_LIMIT]) || 60,
+    // 月間労働時間の上限。設定が無い新規店舗向けのデフォルト。
+    // 修正点.md の方針: 240時間（下限）〜280時間（上限/危険ライン）。
+    fulltimeMonthlyLimit: parseInt(settings[SETTING_KEYS.FULLTIME_MONTHLY_LIMIT]) || 280,
     requestDeadlineDay: parseInt(settings[SETTING_KEYS.REQUEST_DEADLINE_DAY]) || 20,
     timeSlotStaffing: parseTimeSlotStaffing(settings[SETTING_KEYS.TIME_SLOT_STAFFING]),
   };
@@ -152,8 +154,9 @@ export async function verifyStaffPin(
     return { ok: false, message: 'PINが未設定です。初回ログインから設定してください。' };
   }
 
-  const inputHash = await hashPassword(pin);
-  if (inputHash !== info.pinHash) {
+  // 定数時間比較 + 旧SHA-256/新PBKDF2の両対応
+  const pinOk = await verifyPassword(pin, info.pinHash);
+  if (!pinOk) {
     const newCount = info.failedCount + 1;
     let lockedUntil: string | null = null;
     if (newCount >= PIN_LOCKOUT_THRESHOLD) {
@@ -186,8 +189,9 @@ export async function loginManager(
   if (!row) {
     return { ok: false, message: 'メールアドレスまたはパスワードが正しくありません' };
   }
-  const inputHash = await hashPassword(password);
-  if (inputHash !== row.passwordHash) {
+  // 定数時間比較 + 旧SHA-256/新PBKDF2の両対応
+  const passOk = await verifyPassword(password, row.passwordHash);
+  if (!passOk) {
     return { ok: false, message: 'メールアドレスまたはパスワードが正しくありません' };
   }
   await dao.touchManagerLogin(db, row.manager.id);

@@ -344,19 +344,19 @@ export async function resolveSurplus(db: DB, storeId: number, yearMonth: string)
 
             if (shS >= slotS && shE <= slotE) {
               // 完全にスロット内 → 削除
-              await dao.deleteShiftScheduleEntry(db, shift.id);
+              await dao.deleteShiftScheduleEntry(db, storeId, shift.id);
               changes.push(name + ' ' + date + ' ' + shift.startTime + '-' + shift.endTime + ' 削除');
               changedThisPass++;
               excess--;
             } else if (shS < slotS) {
               // 前から始まっている → スロット開始で切る
-              await dao.updateShiftScheduleEntry(db, shift.id, { endTime: slot.start });
+              await dao.updateShiftScheduleEntry(db, storeId, shift.id, { endTime: slot.start });
               changes.push(name + ' ' + date + ' ' + shift.startTime + '-' + shift.endTime + ' → ' + shift.startTime + '-' + slot.start);
               changedThisPass++;
               excess--;
             } else if (shE > slotE) {
               // 後ろに延びている → スロット終了から開始
-              await dao.updateShiftScheduleEntry(db, shift.id, { startTime: slot.end });
+              await dao.updateShiftScheduleEntry(db, storeId, shift.id, { startTime: slot.end });
               changes.push(name + ' ' + date + ' ' + shift.startTime + '-' + shift.endTime + ' → ' + slot.end + '-' + shift.endTime);
               changedThisPass++;
               excess--;
@@ -522,7 +522,7 @@ export async function getMyShift(db: DB, storeId: number, staffId: string, yearM
 
 // シフト1件を更新する
 export async function updateShiftEntry(db: DB, storeId: number, shiftId: string, data: Partial<{ startTime: string; endTime: string }>): Promise<ApiResult> {
-  const result = await dao.updateShiftScheduleEntry(db, shiftId, data);
+  const result = await dao.updateShiftScheduleEntry(db, storeId, shiftId, data);
   if (result) {
     await dao.addLog(db, storeId, '管理者', 'シフト編集', shiftId);
     return { success: true, message: '更新しました' };
@@ -541,7 +541,7 @@ export async function addShiftEntry(
 
 // シフト1件を削除する
 export async function deleteShiftEntry(db: DB, storeId: number, shiftId: string): Promise<ApiResult> {
-  const result = await dao.deleteShiftScheduleEntry(db, shiftId);
+  const result = await dao.deleteShiftScheduleEntry(db, storeId, shiftId);
   if (result) {
     await dao.addLog(db, storeId, '管理者', 'シフト削除', shiftId);
     return { success: true, message: '削除しました' };

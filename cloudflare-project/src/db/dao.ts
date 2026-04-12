@@ -502,13 +502,16 @@ export async function getShiftSchedules(db: DB, storeId: number, yearMonth: stri
 
 export async function updateShiftScheduleEntry(
   db: DB,
+  storeId: number,
   shiftId: string,
   updateData: Partial<{ startTime: string; endTime: string; status: string }>
 ): Promise<boolean> {
+  // storeId でフィルタし、他店舗のシフトを更新できないようにする（認可チェック）
   const { data: current, error: getErr } = await db
     .from('shift_schedules')
     .select('*')
     .eq('id', shiftId)
+    .eq('store_id', storeId)
     .maybeSingle();
   if (getErr) throw getErr;
   if (!current) return false;
@@ -531,7 +534,8 @@ export async function updateShiftScheduleEntry(
   const { error, count } = await db
     .from('shift_schedules')
     .update(update, { count: 'exact' })
-    .eq('id', shiftId);
+    .eq('id', shiftId)
+    .eq('store_id', storeId);
   if (error) throw error;
   return (count ?? 0) > 0;
 }
@@ -566,11 +570,13 @@ export async function addShiftScheduleEntry(
   return id;
 }
 
-export async function deleteShiftScheduleEntry(db: DB, shiftId: string): Promise<boolean> {
+export async function deleteShiftScheduleEntry(db: DB, storeId: number, shiftId: string): Promise<boolean> {
+  // storeId でフィルタすることで、他店舗のシフトを誤って/意図的に削除することを防ぐ
   const { error, count } = await db
     .from('shift_schedules')
     .delete({ count: 'exact' })
-    .eq('id', shiftId);
+    .eq('id', shiftId)
+    .eq('store_id', storeId);
   if (error) throw error;
   return (count ?? 0) > 0;
 }

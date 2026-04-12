@@ -3,6 +3,20 @@
 // ========================================
 // ヘルパー関数
 // ========================================
+// HTMLエスケープ（XSS対策）
+// スタッフ名や備考など、ユーザー入力を innerHTML に入れる前に必ず通す
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+// エイリアス（短く書きたいとき用）
+var esc = escapeHtml;
+
 function getNextMonthStr() {
   var d = new Date(); d.setMonth(d.getMonth() + 1);
   return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2);
@@ -26,9 +40,9 @@ function onShow_store_select() {
     var html = '';
     for (var i = 0; i < stores.length; i++) {
       var s = stores[i];
-      html += '<div class="store-card" onclick="selectStore(\'' + s.code + '\', \'' + s.name + '\')">';
-      html += '<div class="store-card-name">' + s.name + '</div>';
-      html += '<div class="store-card-type">' + s.type + '</div>';
+      html += '<div class="store-card" onclick="selectStore(\'' + esc(s.code) + '\', \'' + esc(s.name) + '\')">';
+      html += '<div class="store-card-name">' + esc(s.name) + '</div>';
+      html += '<div class="store-card-type">' + esc(s.type) + '</div>';
       html += '</div>';
     }
     container.innerHTML = html;
@@ -67,7 +81,7 @@ function onShow_staff_select() {
     var html = '';
     for (var i = 0; i < staffList.length; i++) {
       var s = staffList[i];
-      html += '<div class="staff-item" onclick="App.selectStaff(\'' + s.id + '\', \'' + s.name + '\')">' + s.name + '</div>';
+      html += '<div class="staff-item" onclick="App.selectStaff(\'' + esc(s.id) + '\', \'' + esc(s.name) + '\')">' + esc(s.name) + '</div>';
     }
     container.innerHTML = html;
   }).catch(function() {
@@ -160,7 +174,7 @@ function onShow_admin_dashboard() {
     html += '<div class="progress-bar"><div class="progress-fill" style="width:' + pct + '%"></div></div>';
     if (summary.notSubmitted.length > 0) {
       html += '<div class="mt-16"><div class="text-sm text-muted mb-8">未提出のスタッフ:</div>';
-      var names = summary.notSubmitted.map(function(s) { return s.name; });
+      var names = summary.notSubmitted.map(function(s) { return esc(s.name); });
       html += '<div class="text-sm text-accent">' + names.join('、') + '</div></div>';
     }
     document.getElementById('admin-summary-content').innerHTML = html;
@@ -220,7 +234,7 @@ function loadRequestList(yearMonth) {
       for (var j = 0; j < requests.length; j++) {
         var r = requests[j]; var name = staffMap[r.staffId] || r.staffId;
         var timeStr = r.startTime && r.endTime ? r.startTime + '-' + r.endTime : '-';
-        tableHtml += '<tr><td>' + name + '</td><td>' + r.date + '</td><td>' + r.type + '</td><td>' + timeStr + '</td><td>' + (r.note || '') + '</td></tr>';
+        tableHtml += '<tr><td>' + esc(name) + '</td><td>' + esc(r.date) + '</td><td>' + esc(r.type) + '</td><td>' + esc(timeStr) + '</td><td>' + esc(r.note || '') + '</td></tr>';
       }
     }
     tableHtml += '</table></div>';
@@ -689,7 +703,8 @@ var AdminShiftEdit = {
 
       for (var ts = 0; ts < timeSlots.length; ts++) {
         var slot = timeSlots[ts];
-        var slotLabel = (slot.label || '') + ' ' + slot.start + '-' + slot.end;
+        // slot.label は店舗設定の任意文字列なので HTML に入れる前にエスケープ
+      var slotLabel = esc((slot.label || '') + ' ' + slot.start + '-' + slot.end);
         var hallNeeded = isWeekend ? (slot.weekendHall || slot.hall || 0) : (slot.weekdayHall || slot.hall || 0);
         var kitchenNeeded = isWeekend ? (slot.weekendKitchen || slot.kitchen || 0) : (slot.weekdayKitchen || slot.kitchen || 0);
 
@@ -901,14 +916,14 @@ var AdminShiftEdit = {
       var rowsHtml = '';
       for (var si = 0; si < staffGroup.length; si++) {
         var staff = staffGroup[si];
-        rowsHtml += '<tr><td class="staff-name-col">' + staff.name + '</td>';
+        rowsHtml += '<tr><td class="staff-name-col">' + esc(staff.name) + '</td>';
         for (var day = 1; day <= daysInMonth; day++) {
           var dateStr = self.yearMonth + '-' + ('0' + day).slice(-2);
           var shift = (schedMap[staff.id] || {})[dateStr];
           var req = (reqMap[staff.id] || {})[dateStr];
           if (shift) {
             // 確定シフトがある場合
-            rowsHtml += '<td class="shift-cell has-shift" onclick="AdminShiftEdit.editShift(\'' + shift.id + '\', \'' + dateStr + '\', \'' + staff.id + '\')" title="' + staff.name + ' ' + shift.startTime + '-' + shift.endTime + '">' + shift.startTime + '<br>' + shift.endTime + '</td>';
+            rowsHtml += '<td class="shift-cell has-shift" onclick="AdminShiftEdit.editShift(\'' + esc(shift.id) + '\', \'' + dateStr + '\', \'' + esc(staff.id) + '\')" title="' + esc(staff.name + ' ' + shift.startTime + '-' + shift.endTime) + '">' + esc(shift.startTime) + '<br>' + esc(shift.endTime) + '</td>';
           } else if (req) {
             // シフト希望がある場合（薄い色で表示）
             var reqClass = 'shift-cell has-request';
@@ -916,7 +931,7 @@ var AdminShiftEdit = {
             var reqTitle = staff.name + ' ';
             if (req.type === '出勤希望') {
               reqClass += ' req-work';
-              reqLabel = req.startTime + '<br>' + req.endTime;
+              reqLabel = esc(req.startTime) + '<br>' + esc(req.endTime);
               reqTitle += '出勤希望 ' + req.startTime + '-' + req.endTime;
             } else if (req.type === '休み希望') {
               reqClass += ' req-off';
@@ -924,12 +939,12 @@ var AdminShiftEdit = {
               reqTitle += '休み希望';
             } else if (req.type === 'どちらでも') {
               reqClass += ' req-either';
-              reqLabel = req.startTime ? req.startTime + '<br>' + req.endTime : 'OK';
+              reqLabel = req.startTime ? esc(req.startTime) + '<br>' + esc(req.endTime) : 'OK';
               reqTitle += 'どちらでも' + (req.startTime ? ' ' + req.startTime + '-' + req.endTime : '');
             }
-            rowsHtml += '<td class="' + reqClass + '" onclick="AdminShiftEdit.addShift(\'' + dateStr + '\', \'' + staff.id + '\')" title="' + reqTitle + '">' + reqLabel + '</td>';
+            rowsHtml += '<td class="' + reqClass + '" onclick="AdminShiftEdit.addShift(\'' + dateStr + '\', \'' + esc(staff.id) + '\')" title="' + esc(reqTitle) + '">' + reqLabel + '</td>';
           } else {
-            rowsHtml += '<td class="shift-cell" onclick="AdminShiftEdit.addShift(\'' + dateStr + '\', \'' + staff.id + '\')"></td>';
+            rowsHtml += '<td class="shift-cell" onclick="AdminShiftEdit.addShift(\'' + dateStr + '\', \'' + esc(staff.id) + '\')"></td>';
           }
         }
         // 月間合計時間セル
@@ -1101,7 +1116,7 @@ var AdminShiftEdit = {
     html += '<span style="font-weight:bold;color:' + color + ';font-size:15px">' + submitted + ' / ' + total + '人</span>';
     html += '<span style="font-size:12px;color:#888">(' + pct + '%)</span>';
     if (summary.notSubmitted && summary.notSubmitted.length > 0) {
-      var names = summary.notSubmitted.map(function(s) { return s.name; }).join(', ');
+      var names = summary.notSubmitted.map(function(s) { return esc(s.name); }).join(', ');
       html += '<span style="font-size:11px;color:#C62828;margin-left:8px">未提出: ' + names + '</span>';
     }
     html += '</div>';
@@ -1226,7 +1241,7 @@ var AdminShiftEdit = {
           else if (totalH > 240) { color = '#E65100'; warn = ' !'; }
         }
         h += '<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px dotted #F0E8DC">';
-        h += '<span>' + s.name + '<span style="color:#888;font-size:9px"> ' + posL + '</span></span>';
+        h += '<span>' + esc(s.name) + '<span style="color:#888;font-size:9px"> ' + posL + '</span></span>';
         h += '<span style="font-weight:bold;color:' + color + '">' + totalH + 'h' + warn + ' <span style="color:#888;font-size:9px">' + days + '日</span></span>';
         h += '</div>';
       }
@@ -1322,25 +1337,25 @@ var AdminShiftEdit = {
     for (var si = 0; si < sortedStaff.length; si++) {
       var staff = sortedStaff[si];
       var nameLabel = (staff.employmentType === '正社員' ? '[社] ' : '') + staff.name;
-      html += '<tr><td class="time-col" style="text-align:left;font-size:12px">' + nameLabel + '</td>';
+      html += '<tr><td class="time-col" style="text-align:left;font-size:12px">' + esc(nameLabel) + '</td>';
       for (var day = weekStart; day <= weekEnd; day++) {
         if (day < 1 || day > daysInMonth) { html += '<td></td>'; continue; }
         var dateStr = this.yearMonth + '-' + ('0' + day).slice(-2);
         var shift = (schedMap[staff.id] || {})[dateStr];
         var req = (reqMap[staff.id] || {})[dateStr];
         if (shift) {
-          html += '<td class="has-shift" onclick="AdminShiftEdit.editShift(\'' + shift.id + '\',\'' + dateStr + '\',\'' + staff.id + '\')" title="' + shift.startTime + '-' + shift.endTime + '">';
-          html += '<div style="font-size:12px;font-weight:bold">' + shift.startTime + '</div>';
-          html += '<div style="font-size:11px;color:#666">~' + shift.endTime + '</div>';
+          html += '<td class="has-shift" onclick="AdminShiftEdit.editShift(\'' + esc(shift.id) + '\',\'' + dateStr + '\',\'' + esc(staff.id) + '\')" title="' + esc(shift.startTime + '-' + shift.endTime) + '">';
+          html += '<div style="font-size:12px;font-weight:bold">' + esc(shift.startTime) + '</div>';
+          html += '<div style="font-size:11px;color:#666">~' + esc(shift.endTime) + '</div>';
           html += '<div style="font-size:10px;color:#888">' + (shift.workHours || 0) + 'h</div>';
           html += '</td>';
         } else if (req) {
           var bgColor = req.type === '出勤希望' ? '#E3F2FD' : (req.type === '休み希望' ? '#FFEBEE' : '#FFF8E1');
-          html += '<td style="background:' + bgColor + ';cursor:pointer;font-size:11px" onclick="AdminShiftEdit.addShift(\'' + dateStr + '\',\'' + staff.id + '\')">';
-          html += req.type === '休み希望' ? '休' : (req.startTime || 'OK');
+          html += '<td style="background:' + bgColor + ';cursor:pointer;font-size:11px" onclick="AdminShiftEdit.addShift(\'' + dateStr + '\',\'' + esc(staff.id) + '\')">';
+          html += req.type === '休み希望' ? '休' : esc(req.startTime || 'OK');
           html += '</td>';
         } else {
-          html += '<td style="cursor:pointer" onclick="AdminShiftEdit.addShift(\'' + dateStr + '\',\'' + staff.id + '\')"></td>';
+          html += '<td style="cursor:pointer" onclick="AdminShiftEdit.addShift(\'' + dateStr + '\',\'' + esc(staff.id) + '\')"></td>';
         }
       }
       html += '</tr>';
@@ -1393,7 +1408,7 @@ var AdminShiftEdit = {
           if (h === shiftStart) {
             label += ' ' + shift.startTime + '-' + shift.endTime;
           }
-          html += '<span class="' + chipClass + '" onclick="AdminShiftEdit.editShift(\'' + shift.id + '\',\'' + this.selectedDay + '\',\'' + shift.staffId + '\')">' + label + '</span>';
+          html += '<span class="' + chipClass + '" onclick="AdminShiftEdit.editShift(\'' + esc(shift.id) + '\',\'' + this.selectedDay + '\',\'' + esc(shift.staffId) + '\')">' + esc(label) + '</span>';
         }
       }
       html += '</div></div>';
@@ -1408,7 +1423,7 @@ var AdminShiftEdit = {
       html += '<div style="margin-top:12px;padding:8px;background:#FFF8E1;border-radius:8px">';
       html += '<div style="font-size:12px;color:#888;margin-bottom:4px">未配置のスタッフ（クリックで追加）:</div>';
       for (var ui = 0; ui < unassigned.length; ui++) {
-        html += '<span class="day-view-chip" style="margin:2px" onclick="AdminShiftEdit.addShift(\'' + this.selectedDay + '\',\'' + unassigned[ui].id + '\')">' + unassigned[ui].name + '</span>';
+        html += '<span class="day-view-chip" style="margin:2px" onclick="AdminShiftEdit.addShift(\'' + this.selectedDay + '\',\'' + esc(unassigned[ui].id) + '\')">' + esc(unassigned[ui].name) + '</span>';
       }
       html += '</div>';
     }
@@ -1501,7 +1516,7 @@ var AdminShiftEdit = {
       for (var si = 0; si < staffGroup.length; si++) {
         var staff = staffGroup[si];
         var empBadge = staff.employmentType === '正社員' ? '<span class="emp-badge fulltime">社</span>' : '<span class="emp-badge parttime">AP</span>';
-        rowHtml += '<tr class="gantt-row"><td class="gantt-name-cell">' + staff.name + empBadge + '</td>';
+        rowHtml += '<tr class="gantt-row"><td class="gantt-name-cell">' + esc(staff.name) + empBadge + '</td>';
 
         // この人のこの日のシフトを探す
         var shift = null;
@@ -1511,7 +1526,7 @@ var AdminShiftEdit = {
 
         // セル描画
         for (var slot = 0; slot < totalSlots; slot++) {
-          rowHtml += '<td class="gantt-cell" data-slot="' + slot + '" data-staff="' + staff.id + '">';
+          rowHtml += '<td class="gantt-cell" data-slot="' + slot + '" data-staff="' + esc(staff.id) + '">';
 
           // シフトバーは開始スロットにのみ描画
           if (shift) {
@@ -1530,17 +1545,17 @@ var AdminShiftEdit = {
                 barStyle = staff.position === 'キッチン' ? 'background:#78909C;' : 'background:#90A4AE;';
               }
               var barLabel = shift.startTime + '-' + shift.endTime;
-              rowHtml += '<div class="' + barClass + '" style="width:calc(' + barWidth + ' * 100% + ' + (barWidth - 1) + 'px);' + barStyle + '" onclick="AdminShiftEdit.editShift(\'' + shift.id + '\',\'' + self.selectedDay + '\',\'' + staff.id + '\')" title="' + staff.name + ' ' + barLabel + ' (' + (shift.creationMethod === '手動' ? '手動' : 'AI提案') + ')">';
-              rowHtml += '<span class="bar-handle left" onmousedown="AdminShiftEdit.startGanttDrag(event,\'' + shift.id + '\',\'left\')"></span>';
-              if (barWidth >= 4) rowHtml += barLabel;
-              rowHtml += '<span class="bar-handle right" onmousedown="AdminShiftEdit.startGanttDrag(event,\'' + shift.id + '\',\'right\')"></span>';
+              rowHtml += '<div class="' + barClass + '" style="width:calc(' + barWidth + ' * 100% + ' + (barWidth - 1) + 'px);' + barStyle + '" onclick="AdminShiftEdit.editShift(\'' + esc(shift.id) + '\',\'' + self.selectedDay + '\',\'' + esc(staff.id) + '\')" title="' + esc(staff.name + ' ' + barLabel + ' (' + (shift.creationMethod === '手動' ? '手動' : 'AI提案') + ')') + '">';
+              rowHtml += '<span class="bar-handle left" onmousedown="AdminShiftEdit.startGanttDrag(event,\'' + esc(shift.id) + '\',\'left\')"></span>';
+              if (barWidth >= 4) rowHtml += esc(barLabel);
+              rowHtml += '<span class="bar-handle right" onmousedown="AdminShiftEdit.startGanttDrag(event,\'' + esc(shift.id) + '\',\'right\')"></span>';
               rowHtml += '</div>';
             }
           }
 
           // シフトなし & 空セルクリックで追加
           if (!shift) {
-            rowHtml = rowHtml.replace(/<td class="gantt-cell"/, '<td class="gantt-cell" style="cursor:pointer" onclick="AdminShiftEdit.addShift(\'' + self.selectedDay + '\',\'' + staff.id + '\')"');
+            rowHtml = rowHtml.replace(/<td class="gantt-cell"/, '<td class="gantt-cell" style="cursor:pointer" onclick="AdminShiftEdit.addShift(\'' + self.selectedDay + '\',\'' + esc(staff.id) + '\')"');
           }
           rowHtml += '</td>';
         }
@@ -1631,7 +1646,7 @@ var AdminShiftEdit = {
         var cardBg = allOk ? '#E8F5E9' : '#FFEBEE';
         var cardBorder = allOk ? '#A5D6A7' : '#EF9A9A';
         html += '<div style="flex:1;min-width:200px;background:' + cardBg + ';border:2px solid ' + cardBorder + ';border-radius:12px;padding:12px;text-align:center">';
-        html += '<div style="font-weight:bold;font-size:14px;color:#4A3323;margin-bottom:8px">' + (ts.label || '') + ' ' + ts.start + ' - ' + ts.end + '</div>';
+        html += '<div style="font-weight:bold;font-size:14px;color:#4A3323;margin-bottom:8px">' + esc((ts.label || '') + ' ' + ts.start + ' - ' + ts.end) + '</div>';
         // ホール
         var hColor = hDiff >= 0 ? '#2E7D32' : '#C62828';
         html += '<div style="display:flex;justify-content:space-between;padding:4px 8px"><span>ホール</span><span style="font-weight:bold;color:' + hColor + '">' + hActual + ' / ' + hallNeed + '人';
@@ -1659,7 +1674,7 @@ var AdminShiftEdit = {
       for (var ui = 0; ui < unassigned.length; ui++) {
         var uBadge = unassigned[ui].employmentType === '正社員' ? '[社]' : '';
         var uPos = unassigned[ui].position === 'キッチン' ? 'K' : 'H';
-        html += '<span class="day-view-chip' + (unassigned[ui].position === 'キッチン' ? ' kitchen' : '') + '" style="margin:2px" onclick="AdminShiftEdit.addShift(\'' + this.selectedDay + '\',\'' + unassigned[ui].id + '\')">' + uBadge + unassigned[ui].name + '(' + uPos + ')</span>';
+        html += '<span class="day-view-chip' + (unassigned[ui].position === 'キッチン' ? ' kitchen' : '') + '" style="margin:2px" onclick="AdminShiftEdit.addShift(\'' + this.selectedDay + '\',\'' + esc(unassigned[ui].id) + '\')">' + uBadge + esc(unassigned[ui].name) + '(' + uPos + ')</span>';
       }
       html += '</div>';
     }
@@ -1819,7 +1834,7 @@ var AdminShiftEdit = {
         else if (hasSurplus) { cardBg = '#E3F2FD'; cardBorder = '#42A5F5'; }
         else { cardBg = '#E8F5E9'; cardBorder = '#66BB6A'; }
         html += '<div style="display:inline-block;background:' + cardBg + ';border:2px solid ' + cardBorder + ';border-radius:6px;padding:4px 10px;font-size:11px">';
-        html += '<b>' + (timeSlots[ts].label || timeSlots[ts].start) + '</b> ' + timeSlots[ts].start + '-' + timeSlots[ts].end;
+        html += '<b>' + esc(timeSlots[ts].label || timeSlots[ts].start) + '</b> ' + esc(timeSlots[ts].start + '-' + timeSlots[ts].end);
         if (hasShortage) html += ' <span style="color:#C62828;font-weight:bold">!不足!</span>';
         html += '<br>';
         html += 'H:' + statusText(sc.hallActual, sc.hallNeed) + ' K:' + statusText(sc.kitchenActual, sc.kitchenNeed);
@@ -1840,7 +1855,7 @@ var AdminShiftEdit = {
         var staff = staffMap[shift.staffId]; if (!staff) continue;
         var empBadge = staff.employmentType === '正社員' ? '<span class="emp-badge fulltime">社</span>' : '';
         var posLabel = staff.position === 'キッチン' ? '<span style="color:#1565C0;font-size:9px"> K</span>' : '<span style="color:#2E7D32;font-size:9px"> H</span>';
-        html += '<tr class="gantt-row"><td class="gantt-name-cell" style="font-size:10px">' + staff.name + posLabel + empBadge + '</td>';
+        html += '<tr class="gantt-row"><td class="gantt-name-cell" style="font-size:10px">' + esc(staff.name) + posLabel + empBadge + '</td>';
 
         for (var slot2 = 0; slot2 < totalSlots; slot2++) {
           html += '<td class="gantt-cell">';
@@ -1856,10 +1871,10 @@ var AdminShiftEdit = {
             } else {
               barSt = staff.position === 'キッチン' ? 'background:#78909C;' : 'background:#90A4AE;';
             }
-            html += '<div class="' + barCls + '" style="width:calc(' + bw + ' * 100% + ' + (bw - 1) + 'px);' + barSt + '" onclick="AdminShiftEdit.editShift(\'' + shift.id + '\',\'' + dateStr + '\',\'' + shift.staffId + '\')" title="' + staff.name + ' ' + shift.startTime + '-' + shift.endTime + '">';
-            html += '<span class="bar-handle left" onmousedown="AdminShiftEdit.startGanttDrag(event,\'' + shift.id + '\',\'left\')"></span>';
-            if (bw >= 3) html += '<span style="pointer-events:none">' + shift.startTime + '-' + shift.endTime + '</span>';
-            html += '<span class="bar-handle right" onmousedown="AdminShiftEdit.startGanttDrag(event,\'' + shift.id + '\',\'right\')"></span>';
+            html += '<div class="' + barCls + '" style="width:calc(' + bw + ' * 100% + ' + (bw - 1) + 'px);' + barSt + '" onclick="AdminShiftEdit.editShift(\'' + esc(shift.id) + '\',\'' + dateStr + '\',\'' + esc(shift.staffId) + '\')" title="' + esc(staff.name + ' ' + shift.startTime + '-' + shift.endTime) + '">';
+            html += '<span class="bar-handle left" onmousedown="AdminShiftEdit.startGanttDrag(event,\'' + esc(shift.id) + '\',\'left\')"></span>';
+            if (bw >= 3) html += '<span style="pointer-events:none">' + esc(shift.startTime + '-' + shift.endTime) + '</span>';
+            html += '<span class="bar-handle right" onmousedown="AdminShiftEdit.startGanttDrag(event,\'' + esc(shift.id) + '\',\'right\')"></span>';
             html += '</div>';
           }
           html += '</td>';
@@ -1875,7 +1890,7 @@ var AdminShiftEdit = {
         html += '<tr><td colspan="' + (totalSlots + 1) + '" style="padding:4px 8px;background:#FFF8E1;font-size:10px">';
         html += '<span style="color:#888">未配置: </span>';
         for (var ui = 0; ui < unassigned.length; ui++) {
-          html += '<span class="day-view-chip' + (unassigned[ui].position === 'キッチン' ? ' kitchen' : '') + '" style="margin:1px;font-size:9px;padding:1px 4px" onclick="AdminShiftEdit.addShift(\'' + dateStr + '\',\'' + unassigned[ui].id + '\')">' + unassigned[ui].name + '</span>';
+          html += '<span class="day-view-chip' + (unassigned[ui].position === 'キッチン' ? ' kitchen' : '') + '" style="margin:1px;font-size:9px;padding:1px 4px" onclick="AdminShiftEdit.addShift(\'' + dateStr + '\',\'' + esc(unassigned[ui].id) + '\')">' + esc(unassigned[ui].name) + '</span>';
         }
         html += '</td></tr>';
       }
@@ -2241,10 +2256,10 @@ var StaffManage = {
       var s = this.staffList[i];
       var pos = s.position || 'ホール';
       var payInfo = s.employmentType === '正社員' ? App.formatCurrency(s.monthlySalary) + '円/月' : App.formatCurrency(s.hourlyRate) + '円/時';
-      html += '<tr><td class="text-bold">' + s.name + ' <span class="text-sm text-muted">[' + pos + '/' + s.employmentType + ']</span></td><td><span class="badge badge-confirmed">' + pos + '</span> <span class="badge badge-draft">' + s.employmentType + '</span></td><td>' + payInfo + '</td>';
-      html += '<td><button class="btn btn-outline btn-sm" onclick="StaffManage.edit(\'' + s.id + '\')" style="margin-right:4px">編集</button>';
-      html += '<button class="btn btn-primary btn-sm" onclick="StaffManage.setPin(\'' + s.id + '\', \'' + s.name + '\')" style="margin-right:4px">PIN発行</button>';
-      html += '<button class="btn btn-danger btn-sm" onclick="StaffManage.retire(\'' + s.id + '\', \'' + s.name + '\')">退職</button></td></tr>';
+      html += '<tr><td class="text-bold">' + esc(s.name) + ' <span class="text-sm text-muted">[' + esc(pos) + '/' + esc(s.employmentType) + ']</span></td><td><span class="badge badge-confirmed">' + esc(pos) + '</span> <span class="badge badge-draft">' + esc(s.employmentType) + '</span></td><td>' + esc(payInfo) + '</td>';
+      html += '<td><button class="btn btn-outline btn-sm" onclick="StaffManage.edit(\'' + esc(s.id) + '\')" style="margin-right:4px">編集</button>';
+      html += '<button class="btn btn-primary btn-sm" onclick="StaffManage.setPin(\'' + esc(s.id) + '\', \'' + esc(s.name) + '\')" style="margin-right:4px">PIN発行</button>';
+      html += '<button class="btn btn-danger btn-sm" onclick="StaffManage.retire(\'' + esc(s.id) + '\', \'' + esc(s.name) + '\')">退職</button></td></tr>';
     }
     html += '</table></div>';
     container.innerHTML = html;
@@ -2410,7 +2425,7 @@ var LaborCost = {
     var totalHours = 0, totalBase = 0, totalLate = 0, totalOT = 0, totalTrans = 0;
     for (var i = 0; i < costs.length; i++) {
       var c = costs[i];
-      html += '<tr><td class="text-bold">' + c.name + '</td><td>' + c.employmentType + '</td><td class="text-right">' + App.formatHours(c.totalHours) + 'h</td><td class="text-right">' + App.formatCurrency(c.basePay) + '</td><td class="text-right">' + App.formatCurrency(c.lateNightPay) + '</td><td class="text-right">' + App.formatCurrency(c.overtimePay) + '</td><td class="text-right">' + App.formatCurrency(c.transportTotal) + '</td><td class="text-right text-bold">' + App.formatCurrency(c.totalCost) + '</td></tr>';
+      html += '<tr><td class="text-bold">' + esc(c.name) + '</td><td>' + esc(c.employmentType) + '</td><td class="text-right">' + App.formatHours(c.totalHours) + 'h</td><td class="text-right">' + App.formatCurrency(c.basePay) + '</td><td class="text-right">' + App.formatCurrency(c.lateNightPay) + '</td><td class="text-right">' + App.formatCurrency(c.overtimePay) + '</td><td class="text-right">' + App.formatCurrency(c.transportTotal) + '</td><td class="text-right text-bold">' + App.formatCurrency(c.totalCost) + '</td></tr>';
       totalHours += c.totalHours || 0; totalBase += c.basePay || 0; totalLate += c.lateNightPay || 0; totalOT += c.overtimePay || 0; totalTrans += c.transportTotal || 0;
     }
     html += '<tr style="background-color:#F0E8DC;font-weight:bold"><td colspan="2">合計</td><td class="text-right">' + App.formatHours(totalHours) + 'h</td><td class="text-right">' + App.formatCurrency(totalBase) + '</td><td class="text-right">' + App.formatCurrency(totalLate) + '</td><td class="text-right">' + App.formatCurrency(totalOT) + '</td><td class="text-right">' + App.formatCurrency(totalTrans) + '</td><td class="text-right text-accent">' + App.formatCurrency(report.totalCost) + '</td></tr>';
@@ -2500,7 +2515,7 @@ var StoreSettings = {
       var slot = this.timeSlotStaffing[i];
       html += '<div class="time-slot-row" style="border:1px solid #D7CCC8;border-radius:8px;padding:12px;margin-bottom:8px;background:#FAFAFA">';
       html += '<div class="flex gap-8 mb-8" style="align-items:center">';
-      html += '<input type="text" class="form-input" style="width:80px;font-size:13px" value="' + (slot.label || '') + '" data-slot="' + i + '" data-field="label" placeholder="名前" onchange="StoreSettings.updateSlot(this)">';
+      html += '<input type="text" class="form-input" style="width:80px;font-size:13px" value="' + esc(slot.label || '') + '" data-slot="' + i + '" data-field="label" placeholder="名前" onchange="StoreSettings.updateSlot(this)">';
       html += '<select class="form-select" style="width:80px;font-size:13px" data-slot="' + i + '" data-field="start" onchange="StoreSettings.updateSlot(this)">';
       html += StoreSettings.timeOptions(slot.start);
       html += '</select>';

@@ -245,6 +245,18 @@
     // ===========================================
     // HQ ポータル JavaScript
     // ===========================================
+    // HTMLエスケープ（XSS対策）
+    function escapeHtml(str) {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+    var esc = escapeHtml;
+
     var HQ = {
       token: '',
       currentUser: null,
@@ -345,6 +357,7 @@
         this._fetch('GET', '/me').then(function(me) {
           self.currentUser = me;
           document.getElementById('hq-current-user').textContent = '👤 ' + (me.name || '本部管理者');
+          // textContent なのでエスケープ不要
         });
 
         // 店舗一覧（管理者作成モーダル用）
@@ -382,8 +395,8 @@
           for (var j = 0; j < result.stores.length; j++) {
             var s = result.stores[j];
             gridHtml += '<div class="hq-store-card">' +
-              '<h3>' + s.storeName + '</h3>' +
-              '<div class="code">' + s.storeCode + '</div>' +
+              '<h3>' + esc(s.storeName) + '</h3>' +
+              '<div class="code">' + esc(s.storeCode) + '</div>' +
               '<div class="cost">¥' + Math.round(s.totalCost).toLocaleString() + '</div>' +
               '</div>';
           }
@@ -406,13 +419,13 @@
               ? '<span class="hq-role-badge hq-role-hq">本部管理者</span>'
               : '<span class="hq-role-badge hq-role-mgr">店長</span>';
             var storeName = m.storeId ? self._findStoreName(m.storeId) : '-';
-            html += '<tr><td>' + (m.name || '-') + '</td>' +
-              '<td>' + m.email + '</td>' +
+            html += '<tr><td>' + esc(m.name || '-') + '</td>' +
+              '<td>' + esc(m.email) + '</td>' +
               '<td>' + roleBadge + '</td>' +
-              '<td>' + storeName + '</td>' +
+              '<td>' + esc(storeName) + '</td>' +
               '<td>' +
-                '<button class="hq-btn hq-btn-sm" onclick="HQ.resetPassword(\'' + m.id + '\', \'' + (m.name || m.email) + '\')">パスワードリセット</button> ' +
-                '<button class="hq-btn hq-btn-sm hq-btn-danger" onclick="HQ.deleteManager(\'' + m.id + '\', \'' + (m.name || m.email) + '\')">削除</button>' +
+                '<button class="hq-btn hq-btn-sm" onclick="HQ.resetPassword(\'' + esc(m.id) + '\', \'' + esc(m.name || m.email) + '\')">パスワードリセット</button> ' +
+                '<button class="hq-btn hq-btn-sm hq-btn-danger" onclick="HQ.deleteManager(\'' + esc(m.id) + '\', \'' + esc(m.name || m.email) + '\')">削除</button>' +
               '</td></tr>';
           }
           html += '</table>';
