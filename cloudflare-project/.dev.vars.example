@@ -1,0 +1,28 @@
+# ----------------------------------------------------------
+# ローカル開発用の環境変数テンプレート
+# ----------------------------------------------------------
+# 使い方:
+#   1. このファイルを .dev.vars にコピーする
+#        cp .dev.vars.example .dev.vars
+#   2. 各値を実際の値に置き換える（値はチームのパスワード管理ツールから取得）
+#   3. .dev.vars は Git に上がらない（.gitignore で除外済み）ので安全
+#
+# 各値の意味:
+#   SUPABASE_URL              ... SupabaseプロジェクトのURL
+#   SUPABASE_PUBLISHABLE_KEY  ... 一般公開してOKな公開鍵（フロント用）
+#   SUPABASE_SECRET_KEY       ... サーバー側で使う秘密鍵（公開禁止）
+#   SUPABASE_ANON_KEY         ... 匿名アクセス用キー
+#   SUPABASE_SERVICE_ROLE_KEY ... DB全権限を持つサービスロールキー（最重要・公開厳禁）
+#   JWT_SECRET                ... ログイントークンを署名するための秘密文字列
+#                                 本番では `openssl rand -hex 32` で長いランダム文字列を生成すること
+#
+# Supabaseの値の取得方法:
+#   https://supabase.com/dashboard → 該当プロジェクト → Settings → API
+# ----------------------------------------------------------
+
+SUPABASE_URL=https://xxxxxxxxxxxxx.supabase.co
+SUPABASE_PUBLISHABLE_KEY=sb_publishable_xxxxxxxxxxxxxxxxxx
+SUPABASE_SECRET_KEY=sb_secret_xxxxxxxxxxxxxxxxxx
+SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.xxxxxxxxxxxxxxxxxx
+SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.xxxxxxxxxxxxxxxxxx
+JWT_SECRET=ローカル開発用の十分長いランダム文字列をここに（本番では絶対にこの値を使わない）

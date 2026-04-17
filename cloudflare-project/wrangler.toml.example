@@ -1,17 +1,61 @@
-# このファイルを wrangler.toml にコピーして、自分の情報を入れてください
-# cp wrangler.toml.example wrangler.toml
+# ----------------------------------------------------------
+# Cloudflare Workers のデプロイ設定テンプレート
+# ----------------------------------------------------------
+# 使い方:
+#   1. このファイルを wrangler.toml にコピーする
+#        cp wrangler.toml.example wrangler.toml
+#   2. Cloudflareアカウントにログイン（npx wrangler login）
+#   3. ローカル開発: npx wrangler dev
+#   4. 本番デプロイ（環境ごと）:
+#        npx wrangler deploy --env hq        # 本部用
+#        npx wrangler deploy --env ureshino  # 嬉野本店用
+#        npx wrangler deploy --env tenjin    # 福岡天神店用
+#
+# 機密情報（SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY / JWT_SECRET）は
+# このファイルには書かず、`wrangler secret put` で各環境に登録すること。
+#   例: echo "$SUPABASE_URL" | npx wrangler secret put SUPABASE_URL --env hq
+# ----------------------------------------------------------
 
 name = "gyuumaru-shift"
 main = "src/index.ts"
 compatibility_date = "2025-03-01"
+compatibility_flags = ["nodejs_compat"]
 
 [assets]
 directory = "./public"
 
-[[d1_databases]]
-binding = "DB"
-database_name = "gyuumaru-db"
-database_id = "ここにD1データベースIDを入れる"
+# ========================================
+# 本部用デプロイ
+# 公開先: gyuumaru-shift-hq.<account>.workers.dev
+# トップアクセスで自動的に /hq.html へリダイレクトする
+# ========================================
+[env.hq]
+name = "gyuumaru-shift-hq"
+[env.hq.assets]
+directory = "./public"
+[env.hq.vars]
+INITIAL_PAGE = "hq"
 
-[vars]
-JWT_SECRET = "ここに秘密の文字列を入れる（ランダムな長い文字列を推奨）"
+# ========================================
+# 嬉野本店用デプロイ
+# 公開先: gyuumaru-shift-ureshino.<account>.workers.dev
+# 起動時に店舗選択をスキップして嬉野本店のメニュー画面に直行する
+# ========================================
+[env.ureshino]
+name = "gyuumaru-shift-ureshino"
+[env.ureshino.assets]
+directory = "./public"
+[env.ureshino.vars]
+STORE_CODE = "URESHINO"
+
+# ========================================
+# 福岡天神店用デプロイ
+# 公開先: gyuumaru-shift-tenjin.<account>.workers.dev
+# 起動時に店舗選択をスキップして福岡天神店のメニュー画面に直行する
+# ========================================
+[env.tenjin]
+name = "gyuumaru-shift-tenjin"
+[env.tenjin.assets]
+directory = "./public"
+[env.tenjin.vars]
+STORE_CODE = "FUKUOKA_T"
