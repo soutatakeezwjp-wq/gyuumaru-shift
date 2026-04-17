@@ -625,6 +625,8 @@ export async function saveLaborCosts(db: DB, storeId: number, yearMonth: string,
     base_pay: c.basePay,
     late_night_pay: c.lateNightPay,
     overtime_pay: c.overtimePay,
+    peak_bonus_pay: c.peakBonusPay || 0,
+    weekend_bonus_pay: c.weekendBonusPay || 0,
     transport_total: c.transportTotal,
     total_cost: c.totalCost,
     calculated_at: now,
@@ -651,8 +653,84 @@ export async function getLaborCosts(db: DB, storeId: number, yearMonth: string):
     basePay: (r.base_pay as number) || 0,
     lateNightPay: (r.late_night_pay as number) || 0,
     overtimePay: (r.overtime_pay as number) || 0,
+    peakBonusPay: (r.peak_bonus_pay as number) || 0,
+    weekendBonusPay: (r.weekend_bonus_pay as number) || 0,
     transportTotal: (r.transport_total as number) || 0,
     totalCost: (r.total_cost as number) || 0,
+  }));
+}
+
+// ========================================
+// 5-3 給与明細（社労士CSV取込）
+// ========================================
+
+export async function upsertPayslips(
+  db: DB,
+  items: Array<{ storeId: number; staffId: string; yearMonth: string; data: Record<string, string | number> }>,
+  uploadedBy: string,
+): Promise<void> {
+  if (items.length === 0) return;
+  const rows = items.map((it) => ({
+    store_id: it.storeId,
+    staff_id: it.staffId,
+    year_month: it.yearMonth,
+    data: it.data,
+    uploaded_by: uploadedBy,
+  }));
+  // (store_id, staff_id, year_month) のユニーク制約に対して upsert
+  const { error } = await db.from('payslips').upsert(rows, { onConflict: 'store_id,staff_id,year_month' });
+  if (error) throw error;
+}
+
+export async function getPayslip(
+  db: DB,
+  staffId: string,
+  yearMonth: string,
+): Promise<{ storeId: number; staffId: string; yearMonth: string; data: Record<string, string | number>; uploadedAt?: string } | null> {
+  const { data, error } = await db
+    .from('payslips')
+    .select('*')
+    .eq('staff_id', staffId)
+    .eq('year_month', yearMonth)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  return {
+    storeId: data.store_id as number,
+    staffId: data.staff_id as string,
+    yearMonth: data.year_month as string,
+    data: data.data as Record<string, string | number>,
+    uploadedAt: data.uploaded_at as string,
+  };
+}
+
+export async function getPayslipMonthsForStaff(db: DB, staffId: string): Promise<string[]> {
+  const { data, error } = await db
+    .from('payslips')
+    .select('year_month')
+    .eq('staff_id', staffId)
+    .order('year_month', { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map((r) => r.year_month as string);
+}
+
+export async function getPayslipsForStore(
+  db: DB,
+  storeId: number,
+  yearMonth: string,
+): Promise<Array<{ storeId: number; staffId: string; yearMonth: string; data: Record<string, string | number>; uploadedAt?: string }>> {
+  const { data, error } = await db
+    .from('payslips')
+    .select('*')
+    .eq('store_id', storeId)
+    .eq('year_month', yearMonth);
+  if (error) throw error;
+  return (data ?? []).map((d) => ({
+    storeId: d.store_id as number,
+    staffId: d.staff_id as string,
+    yearMonth: d.year_month as string,
+    data: d.data as Record<string, string | number>,
+    uploadedAt: d.uploaded_at as string,
   }));
 }
 

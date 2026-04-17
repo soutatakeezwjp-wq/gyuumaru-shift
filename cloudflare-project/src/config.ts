@@ -22,6 +22,10 @@ export const SETTING_KEYS = {
   WEEKEND_KITCHEN_MIN: '土日キッチン最低人数',
   FULLTIME_MONTHLY_LIMIT: '正社員月間上限時間',
   TIME_SLOT_STAFFING: '時間帯別必要人数',
+  // 1-1, 1-2, 1-3 手当設定（店舗ごとに独立）
+  PEAK_HOUR_BONUSES: 'ピーク手当設定',          // JSON: [{start, end, bonus, label}]
+  WEEKEND_BONUS_PER_HOUR: '土日祝時給加算',       // 数値（円/時）
+  WEEKDAY_BONUS_PER_HOUR: '平日時給加算',         // 数値（円/時、通常は0）
 } as const;
 
 // ポジション（ホール/キッチン）

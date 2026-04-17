@@ -31,10 +31,15 @@ var Calendar = {
       var dateStr = yearMonth + '-' + ('0' + day).slice(-2);
       var dayOfWeek = new Date(year, month - 1, day).getDay();
       var dayData = data[dateStr] || null;
+      // 祝日判定（holidays.js を読み込んでいない環境でも落ちないようガード）
+      var isHol = (window.Holidays && window.Holidays.isHoliday(dateStr));
+      var holName = isHol ? window.Holidays.getName(dateStr) : null;
 
       var cellClass = 'calendar-cell';
       if (dayOfWeek === 0) cellClass += ' sun';
       if (dayOfWeek === 6) cellClass += ' sat';
+      // 祝日は日曜と同じ赤色扱い
+      if (isHol) cellClass += ' sun holiday';
 
       if (dayData) {
         if (dayData.type === '出勤希望') cellClass += ' work';
@@ -43,8 +48,12 @@ var Calendar = {
         else if (dayData.confirmed) cellClass += ' confirmed';
       }
 
-      html += '<div class="' + cellClass + '" data-date="' + dateStr + '" onclick="Calendar._onCellClick(\'' + containerId + '\', \'' + dateStr + '\')">';
+      var titleAttr = holName ? ' title="' + holName + '"' : '';
+      html += '<div class="' + cellClass + '" data-date="' + dateStr + '"' + titleAttr + ' onclick="Calendar._onCellClick(\'' + containerId + '\', \'' + dateStr + '\')">';
       html += '<div class="day-number">' + day + '</div>';
+      if (holName) {
+        html += '<div class="holiday-name">' + holName + '</div>';
+      }
 
       if (options.renderCell) {
         html += options.renderCell(dateStr, dayData);

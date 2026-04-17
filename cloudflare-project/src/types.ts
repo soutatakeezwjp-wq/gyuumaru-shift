@@ -6,6 +6,11 @@ export interface Env {
   SUPABASE_URL: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
   JWT_SECRET: string;
+  // 店舗ごとの専用デプロイで使う任意の設定
+  // STORE_CODE  : この値が設定されていればフロントは店舗選択をスキップ（例: "URESHINO"）
+  // INITIAL_PAGE: "hq" を指定すると本部画面（/hq.html）に自動リダイレクト
+  STORE_CODE?: string;
+  INITIAL_PAGE?: string;
 }
 
 // 認証ロール（3階層）
@@ -48,6 +53,14 @@ export interface TimeSlotStaffing {
   weekendKitchen?: number;
 }
 
+// 1-1: ピークタイム手当（時間帯ごとの追加時給）
+export interface PeakHourBonus {
+  start: string; // 'HH:MM'
+  end: string;   // 'HH:MM'
+  bonus: number; // 円/時間
+  label?: string;
+}
+
 // 店舗情報（フロントエンド向け）
 export interface StoreInfo {
   storeName: string;
@@ -68,6 +81,10 @@ export interface StoreInfo {
   fulltimeMonthlyLimit: number;
   requestDeadlineDay: number;
   timeSlotStaffing: TimeSlotStaffing[];
+  // 1-1, 1-2, 1-3: 店舗別の手当設定
+  peakHourBonuses: PeakHourBonus[];
+  weekendBonusPerHour: number;
+  weekdayBonusPerHour: number;
 }
 
 // スタッフ
@@ -147,6 +164,10 @@ export interface LaborCostData {
   basePay: number;
   lateNightPay: number;
   overtimePay: number;
+  // 1-1: ピーク手当（時間帯別追加時給）の合計
+  peakBonusPay: number;
+  // 1-2: 曜日手当（土日祝の追加時給）の合計
+  weekendBonusPay: number;
   transportTotal: number;
   totalCost: number;
   monthlyLimit?: number;
@@ -160,6 +181,16 @@ export interface RequestSummary {
   submittedCount: number;
   notSubmitted: StaffListItem[];
   dailySummary: { [date: string]: { work: number; off: number; either: number; total: number } };
+}
+
+// 5-3 社労士CSV取込用の給与明細
+export interface Payslip {
+  id?: number;
+  storeId: number;
+  staffId: string;
+  yearMonth: string;
+  data: Record<string, string | number>; // CSVヘッダ→値
+  uploadedAt?: string;
 }
 
 // API共通レスポンス

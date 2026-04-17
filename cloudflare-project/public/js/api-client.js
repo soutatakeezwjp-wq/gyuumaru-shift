@@ -275,5 +275,26 @@ var API = {
 
   updateStoreSettings: function(settings) {
     return this._fetch('POST', '/admin/settings', settings);
+  },
+
+  // ========================================
+  // 5-3 給与明細（社労士CSV取込）
+  // ========================================
+
+  // 管理者: その月の店舗内全員の給与明細を取得
+  getStorePayslips: function(yearMonth) {
+    return this._fetch('GET', '/admin/payslips/' + yearMonth);
+  },
+  // 管理者: CSV取込
+  uploadPayslipCsv: function(yearMonth, csvText) {
+    return this._fetch('POST', '/admin/payslips/' + yearMonth + '/upload', { csvText: csvText });
+  },
+  // スタッフ自身: 給与明細がある月一覧
+  listMyPayslipMonths: function() {
+    return this._fetch('GET', '/staff/me/payslips');
+  },
+  // スタッフ自身: 指定月の給与明細
+  getMyPayslip: function(yearMonth) {
+    return this._fetch('GET', '/staff/me/payslips/' + yearMonth);
   }
 };

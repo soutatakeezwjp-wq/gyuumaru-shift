@@ -4,7 +4,7 @@ import * as dao from '../db/dao';
 import type { DB } from '../db/supabase';
 import { SETTING_KEYS, STAFF_STATUS } from '../config';
 import { hashPassword, verifyPassword } from '../utils';
-import type { StaffListItem, StoreInfo, TimeSlotStaffing, ManagerAccount } from '../types';
+import type { StaffListItem, StoreInfo, TimeSlotStaffing, ManagerAccount, PeakHourBonus } from '../types';
 
 // スタッフ選択画面用の一覧を取得する（ID, 名前, フリガナ, PIN設定済みかどうか）
 export async function getStaffList(
@@ -62,7 +62,29 @@ export async function getCurrentStoreInfo(db: DB, storeId: number): Promise<Stor
     fulltimeMonthlyLimit: parseInt(settings[SETTING_KEYS.FULLTIME_MONTHLY_LIMIT]) || 280,
     requestDeadlineDay: parseInt(settings[SETTING_KEYS.REQUEST_DEADLINE_DAY]) || 20,
     timeSlotStaffing: parseTimeSlotStaffing(settings[SETTING_KEYS.TIME_SLOT_STAFFING]),
+    peakHourBonuses: parsePeakHourBonuses(settings[SETTING_KEYS.PEAK_HOUR_BONUSES]),
+    weekendBonusPerHour: parseInt(settings[SETTING_KEYS.WEEKEND_BONUS_PER_HOUR]) || 0,
+    weekdayBonusPerHour: parseInt(settings[SETTING_KEYS.WEEKDAY_BONUS_PER_HOUR]) || 0,
   };
+}
+
+// ピーク手当のJSON文字列をパースする
+function parsePeakHourBonuses(json: string | undefined): PeakHourBonus[] {
+  if (!json) return [];
+  try {
+    const parsed = JSON.parse(json);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((p) => p && p.start && p.end && Number.isFinite(p.bonus))
+      .map((p) => ({
+        start: String(p.start),
+        end: String(p.end),
+        bonus: Number(p.bonus),
+        label: p.label ? String(p.label) : undefined,
+      }));
+  } catch {
+    return [];
+  }
 }
 
 // 時間帯別必要人数のJSON文字列をパースする

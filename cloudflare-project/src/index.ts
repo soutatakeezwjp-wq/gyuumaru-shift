@@ -14,6 +14,7 @@ import * as shiftRequestService from './services/shift-request';
 import * as shiftScheduleService from './services/shift-schedule';
 import * as laborCostService from './services/labor-cost';
 import * as lineNotifyService from './services/line-notify';
+import * as payslipService from './services/payslip';
 import * as dao from './db/dao';
 
 type Variables = {
@@ -61,6 +62,16 @@ app.get('/api/stores/:storeCode/info', async (c) => {
 // 時間選択肢を取得
 app.get('/api/time-slots', (c) => {
   return c.json(generateTimeSlots());
+});
+
+// デプロイごとの初期設定をフロントへ渡す
+// 店舗ごと専用デプロイの場合は STORE_CODE を返し、フロントは店舗選択をスキップする
+// 本部用デプロイの場合は initialPage='hq' を返し、フロントは /hq.html へリダイレクトする
+app.get('/api/config', (c) => {
+  return c.json({
+    storeCode: c.env.STORE_CODE || null,
+    initialPage: c.env.INITIAL_PAGE || null,
+  });
 });
 
 // ========================================
@@ -643,6 +654,58 @@ authed.post('/admin/staff/:staffId/set-pin', managerOnly, async (c) => {
     await dao.addLog(db, storeId, c.get('name') || '管理者', 'スタッフPIN設定', staff.name + ' (' + c.req.param('staffId')! + ')');
   }
   return c.json(result, result.success ? 200 : 400);
+});
+
+// ========================================
+// 5-3 給与明細（社労士CSV取込）
+// ========================================
+
+// 管理者・本部: その月の店舗内全員の給与明細を取得
+authed.get('/admin/payslips/:yearMonth', managerOnly, async (c) => {
+  const db = getSupabase(c.env);
+  const storeId = c.get('storeId') ?? 0;
+  const list = await payslipService.getStorePayslips(db, storeId, c.req.param('yearMonth')!);
+  return c.json(list);
+});
+
+// 管理者・本部: CSV取込（CSVは text として送る）
+authed.post('/admin/payslips/:yearMonth/upload', managerOnly, async (c) => {
+  const db = getSupabase(c.env);
+  const storeId = c.get('storeId') ?? 0;
+  const operator = c.get('name') || c.get('managerId') || 'manager';
+  const body = await c.req.json<{ csvText: string }>();
+  if (!body || !body.csvText) {
+    return c.json({ success: false, message: 'CSV本文が空です' }, 400);
+  }
+  const result = await payslipService.uploadPayslipCsv(db, storeId, c.req.param('yearMonth')!, body.csvText, operator);
+  return c.json(result, result.success ? 200 : 400);
+});
+
+// スタッフ自身: 自分の給与明細がある月一覧
+authed.get('/staff/me/payslips', async (c) => {
+  const role = c.get('role');
+  const myStaffId = c.get('staffId');
+  if (role !== 'staff' || !myStaffId) {
+    return c.json({ success: false, message: 'スタッフとしてログインしてください' }, 403);
+  }
+  const db = getSupabase(c.env);
+  const months = await payslipService.listMyMonths(db, myStaffId);
+  return c.json({ success: true, months });
+});
+
+// スタッフ自身: 指定月の給与明細
+authed.get('/staff/me/payslips/:yearMonth', async (c) => {
+  const role = c.get('role');
+  const myStaffId = c.get('staffId');
+  if (role !== 'staff' || !myStaffId) {
+    return c.json({ success: false, message: 'スタッフとしてログインしてください' }, 403);
+  }
+  const db = getSupabase(c.env);
+  const slip = await payslipService.getMyPayslip(db, myStaffId, c.req.param('yearMonth')!);
+  if (!slip) {
+    return c.json({ success: false, message: 'その月の給与明細はまだ登録されていません' }, 404);
+  }
+  return c.json({ success: true, payslip: slip });
 });
 
 // 認証付きルートをマウント

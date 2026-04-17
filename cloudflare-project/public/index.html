@@ -137,7 +137,30 @@
           <div class="card-title">STEP 3: 確定シフトを見る</div>
           <div class="card-subtitle">決まったシフトの確認</div>
         </div>
+        <!-- 5-3 給与明細閲覧 -->
+        <div class="card clickable menu-card" onclick="App.showScreen('staff-payslip-list')">
+          <div class="card-icon">&#128181;</div>
+          <div class="card-title">給与明細を見る</div>
+          <div class="card-subtitle">月ごとの明細を確認</div>
+        </div>
       </div>
+    </div>
+  </div>
+
+  <!-- 5-3 スタッフ用 給与明細 月一覧画面 -->
+  <div id="screen-staff-payslip-list" class="screen hidden">
+    <div class="content">
+      <h2 class="mb-16">給与明細</h2>
+      <p class="text-muted text-sm mb-16">月をタップすると詳細を表示します。</p>
+      <div id="staff-payslip-month-list">読み込み中...</div>
+    </div>
+  </div>
+
+  <!-- 5-3 スタッフ用 給与明細 詳細画面 -->
+  <div id="screen-staff-payslip-detail" class="screen hidden">
+    <div class="content">
+      <h2 class="mb-8" id="staff-payslip-detail-title">給与明細</h2>
+      <div id="staff-payslip-detail-body">読み込み中...</div>
     </div>
   </div>
 
@@ -287,6 +310,42 @@
         <div class="card clickable menu-card" onclick="App.showScreen('admin-labor-cost')"><div class="card-icon">&#128176;</div><div class="card-title">人件費確認</div><div class="card-subtitle">人件費の計算と確認</div></div>
         <div class="card clickable menu-card" onclick="App.showScreen('admin-staff-manage')"><div class="card-icon">&#128101;</div><div class="card-title">スタッフ管理</div><div class="card-subtitle">追加・編集・退職処理</div></div>
         <div class="card clickable menu-card" onclick="App.showScreen('admin-store-settings')"><div class="card-icon">&#9881;</div><div class="card-title">店舗設定</div><div class="card-subtitle">必要人数・営業時間など</div></div>
+        <!-- 5-3 給与明細CSV取込 -->
+        <div class="card clickable menu-card" onclick="App.showScreen('admin-payslip')"><div class="card-icon">&#128196;</div><div class="card-title">給与明細CSV取込</div><div class="card-subtitle">社労士のCSVを取り込み</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5-3 管理者用 給与明細CSV取込画面 -->
+  <div id="screen-admin-payslip" class="screen hidden">
+    <div class="content wide">
+      <h2 class="mb-8">給与明細CSV取込</h2>
+      <p class="text-muted text-sm mb-16">社労士から届いたCSVを貼り付けて取り込みます。1行目はヘッダ（「氏名」列が必須）、2行目以降が明細データです。スタッフ氏名で自動的に紐付けます。</p>
+
+      <div class="card mb-16">
+        <div class="card-title">対象月とCSV</div>
+        <div class="form-group">
+          <label class="form-label">対象月（YYYY-MM）</label>
+          <input type="month" id="payslip-target-month" class="form-input" style="max-width:200px">
+        </div>
+        <div class="form-group">
+          <label class="form-label">CSV本文</label>
+          <textarea id="payslip-csv-text" class="form-input" rows="10" placeholder="氏名,基本給,諸手当,控除,差引支給額&#10;山田 太郎,180000,15000,30000,165000&#10;佐藤 花子,150000,8000,22000,136000"></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">またはCSVファイルから読み込み</label>
+          <input type="file" id="payslip-csv-file" accept=".csv,text/csv" onchange="AdminPayslip.loadFile(this)">
+        </div>
+        <button class="btn btn-primary btn-block btn-lg" onclick="AdminPayslip.upload()">取込を実行する</button>
+      </div>
+
+      <div class="card mb-16">
+        <div class="card-title">取込済み一覧</div>
+        <div class="form-group">
+          <label class="form-label">確認したい月</label>
+          <input type="month" id="payslip-view-month" class="form-input" style="max-width:200px" onchange="AdminPayslip.loadList()">
+        </div>
+        <div id="admin-payslip-list">月を選択してください</div>
       </div>
     </div>
   </div>
@@ -540,6 +599,30 @@
         <div class="form-group"><label class="form-label">締切日（前月の何日まで）</label><input type="number" id="set-deadline-day" class="form-input" min="1" max="28" style="width:100px"> <span class="text-muted text-sm">日</span></div>
       </div>
 
+      <div class="card mb-16">
+        <div class="card-title">時給加算（曜日手当）</div>
+        <p class="text-muted text-sm mb-8">平日・土日祝それぞれの時給に上乗せする手当を設定できます。アルバイト・パートのみ反映されます。</p>
+        <div class="flex gap-8">
+          <div class="form-group" style="flex:1">
+            <label class="form-label">平日 +</label>
+            <input type="number" id="set-weekday-bonus" class="form-input" min="0" max="2000" value="0">
+            <span class="text-muted text-sm">円/時</span>
+          </div>
+          <div class="form-group" style="flex:1">
+            <label class="form-label">土日祝 +</label>
+            <input type="number" id="set-weekend-bonus" class="form-input" min="0" max="2000" value="0">
+            <span class="text-muted text-sm">円/時</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card mb-16">
+        <div class="card-title">ピーク手当（時間帯別追加時給）</div>
+        <p class="text-muted text-sm mb-8">「12:00〜14:00 +200円」のように、特定時間帯だけ時給を加算できます。アルバイト・パートのみ反映されます。</p>
+        <div id="peak-bonus-container"></div>
+        <button class="btn btn-outline btn-sm mt-8" onclick="StoreSettings.addPeakBonus()">+ ピーク手当を追加</button>
+      </div>
+
       <button class="btn btn-primary btn-block btn-lg" onclick="StoreSettings.save()">設定を保存する</button>
     </div>
   </div>
@@ -555,14 +638,27 @@
 
   <!-- JavaScript -->
   <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+  <script src="/js/holidays.js"></script>
   <script src="/js/api-client.js"></script>
   <script src="/js/app.js"></script>
   <script src="/js/calendar.js"></script>
   <script src="/js/pages.js"></script>
 
   <script>
-    // アプリ初期化
-    App.init('');
+    // デプロイごとの初期設定を取得し、本部用なら /hq.html へ、店舗別なら自動で店舗を固定
+    fetch('/api/config').then(function(r) { return r.json(); }).then(function(config) {
+      if (config && config.initialPage === 'hq') {
+        location.replace('/hq.html');
+        return;
+      }
+      if (config && config.storeCode) {
+        window.__GYUUMARU_STORE_CODE__ = config.storeCode;
+      }
+      App.init('');
+    }).catch(function() {
+      // 設定取得に失敗した場合も通常起動（手動で店舗選択）
+      App.init('');
+    });
   </script>
 
 </body>

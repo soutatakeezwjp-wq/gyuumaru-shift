@@ -5,7 +5,8 @@ import type { DB } from '../db/supabase';
 import { getCurrentStoreInfo } from './auth';
 import { EMPLOYMENT_TYPES, TIME_CONFIG } from '../config';
 import { timeToMinutes, calcBreakMinutes, getMonday } from '../utils';
-import type { StaffData, ShiftSchedule, LaborCostData, ApiResult } from '../types';
+import { isWeekendOrHoliday } from '../holidays';
+import type { StaffData, ShiftSchedule, LaborCostData, ApiResult, StoreInfo, PeakHourBonus } from '../types';
 
 // 月間人件費を計算する
 export async function calculateLaborCost(
@@ -48,7 +49,7 @@ export async function calculateLaborCost(
     if (!staff) continue;
 
     const shifts = staffSchedules[staffId];
-    const cost = calcStaffCost(staff, shifts, staff.position || 'ホール', monthlyLimit);
+    const cost = calcStaffCost(staff, shifts, staff.position || 'ホール', monthlyLimit, storeInfo);
     staffCosts.push(cost);
     totalCost += cost.totalCost;
   }
@@ -68,10 +69,26 @@ export async function calculateLaborCost(
 // スタッフ1人分の人件費を計算する（内部関数）
 // position: スタッフのポジション（ホール/キッチン）
 // monthlyLimit: 正社員の月間上限時間（超えた分は1.3倍で計算）
-function calcStaffCost(staff: StaffData, shifts: ShiftSchedule[], position: string, monthlyLimit: number): LaborCostData {
+// storeInfo: 店舗別の手当設定（ピーク手当・曜日手当）を読むために必要
+function calcStaffCost(
+  staff: StaffData,
+  shifts: ShiftSchedule[],
+  position: string,
+  monthlyLimit: number,
+  storeInfo: StoreInfo,
+): LaborCostData {
   let totalMinutes = 0;
   let lateNightMinutes = 0;
+  // 1-1: ピーク手当（時間帯別追加時給）の累計（円）
+  let peakBonusPay = 0;
+  // 1-2: 曜日手当（土日祝の追加時給）の累計（円）
+  let weekendBonusPay = 0;
   const workDays = shifts.length;
+
+  const peakBonuses: PeakHourBonus[] = storeInfo.peakHourBonuses || [];
+  const weekendBonus = storeInfo.weekendBonusPerHour || 0;
+  const weekdayBonus = storeInfo.weekdayBonusPerHour || 0;
+  const isFulltime = staff.employmentType === EMPLOYMENT_TYPES.FULL_TIME;
 
   // 週ごとの労働時間を集計
   const weeklyMinutes: Record<string, number> = {};
@@ -94,6 +111,31 @@ function calcStaffCost(staff: StaffData, shifts: ShiftSchedule[], position: stri
     const overlapEnd = Math.min(endMin, lateEnd);
     if (overlapEnd > overlapStart) {
       lateNightMinutes += (overlapEnd - overlapStart);
+    }
+
+    // 1-1 ピーク手当の計算
+    // アルバイト/パートのみ対象（正社員は固定月給のため別途加算しない方針）
+    if (!isFulltime && peakBonuses.length > 0) {
+      for (const peak of peakBonuses) {
+        const pStart = timeToMinutes(peak.start);
+        const pEnd = timeToMinutes(peak.end);
+        const oStart = Math.max(startMin, pStart);
+        const oEnd = Math.min(endMin, pEnd);
+        if (oEnd > oStart) {
+          const overlapHours = (oEnd - oStart) / 60;
+          peakBonusPay += Math.round(overlapHours * peak.bonus);
+        }
+      }
+    }
+
+    // 1-2 曜日手当の計算（土日祝に追加時給）
+    if (!isFulltime) {
+      const isWeekend = isWeekendOrHoliday(shift.date);
+      const bonus = isWeekend ? weekendBonus : weekdayBonus;
+      if (bonus > 0) {
+        const workHours = actualWorkMin / 60;
+        weekendBonusPay += Math.round(workHours * bonus);
+      }
     }
 
     // 週ごとの集計
@@ -169,8 +211,10 @@ function calcStaffCost(staff: StaffData, shifts: ShiftSchedule[], position: stri
     basePay,
     lateNightPay,
     overtimePay,
+    peakBonusPay,
+    weekendBonusPay,
     transportTotal,
-    totalCost: basePay + lateNightPay + overtimePay + transportTotal,
+    totalCost: basePay + lateNightPay + overtimePay + peakBonusPay + weekendBonusPay + transportTotal,
     monthlyLimit,
     isOverLimit,
     isDanger,
