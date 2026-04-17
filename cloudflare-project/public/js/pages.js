@@ -471,7 +471,9 @@ var ShiftView = {
     for (var i = 0; i < sorted.length; i++) {
       var s = sorted[i]; var parts = s.date.split('-');
       var d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
-      var dayClass = d.getDay() === 0 ? ' class="text-accent"' : (d.getDay() === 6 ? ' style="color:#1976D2"' : '');
+      var isHol = (window.Holidays && window.Holidays.isHoliday(s.date));
+      // 祝日も日曜と同じ赤色
+      var dayClass = (d.getDay() === 0 || isHol) ? ' class="text-accent"' : (d.getDay() === 6 ? ' style="color:#1976D2"' : '');
       html += '<tr><td>' + parseInt(parts[1]) + '/' + parseInt(parts[2]) + '</td><td' + dayClass + '>' + dayNames[d.getDay()] + '</td><td>' + s.startTime + '</td><td>' + s.endTime + '</td><td>' + App.formatHours(s.workHours) + 'h</td></tr>';
     }
     tbody.innerHTML = html;
@@ -695,7 +697,8 @@ var AdminShiftEdit = {
     for (var d = 1; d <= daysInMonth; d++) {
       var dateStr = this.yearMonth + '-' + ('0' + d).slice(-2);
       var dow = new Date(year, month - 1, d).getDay();
-      var isWeekend = (dow === 0 || dow === 6);
+      // 祝日も土日扱い
+      var isWeekend = (window.Holidays ? window.Holidays.isWeekendOrHoliday(dateStr) : (dow === 0 || dow === 6));
       var dayLabel = d + '日(' + dayNames[dow] + ')';
       var dayShifts = schedByDate[dateStr] || [];
       var dayHasShortage = false;
@@ -912,6 +915,23 @@ var AdminShiftEdit = {
 
     // スタッフの行を描画する関数（ポジション別に再利用）
     var self = this;
+    // 5-2: 月内の最大連勤数を計算（月初/月末で連続している場合は月またぎの可能性をマーク）
+    function calcMaxConsecutive(staffId) {
+      var maxRun = 0; var curRun = 0;
+      var startsAtFirst = false; var endsAtLast = false;
+      for (var dC = 1; dC <= daysInMonth; dC++) {
+        var dCStr = self.yearMonth + '-' + ('0' + dC).slice(-2);
+        if (schedMap[staffId] && schedMap[staffId][dCStr]) {
+          curRun++;
+          if (curRun > maxRun) maxRun = curRun;
+          if (dC === 1) startsAtFirst = true;
+          if (dC === daysInMonth) endsAtLast = true;
+        } else {
+          curRun = 0;
+        }
+      }
+      return { maxRun: maxRun, startsAtFirst: startsAtFirst, endsAtLast: endsAtLast };
+    }
     function renderStaffRows(staffGroup) {
       var rowsHtml = '';
       for (var si = 0; si < staffGroup.length; si++) {
@@ -964,7 +984,17 @@ var AdminShiftEdit = {
         if (staff.employmentType === '正社員' && totalH > 300) {
           hoursLabel += ' x1.3';
         }
-        rowsHtml += '<td class="' + hoursClass + '">' + hoursLabel + '</td>';
+        // 5-2: 連勤数を表示（5連勤以上を可視化、6連勤=オレンジ、7連勤以上=赤）
+        var conn = calcMaxConsecutive(staff.id);
+        var connSuffix = '';
+        if (conn.startsAtFirst) connSuffix += '+';
+        if (conn.endsAtLast) connSuffix += '+';
+        var connTitle = '月内の最大連勤: ' + conn.maxRun + '日' + (connSuffix ? '（月またぎ可能性あり）' : '');
+        if (conn.maxRun >= 5) {
+          var connColor = conn.maxRun >= 7 ? '#C62828' : (conn.maxRun >= 6 ? '#E65100' : '#1976D2');
+          hoursLabel += '<br><span class="consecutive-badge" style="color:' + connColor + '" title="' + connTitle + '">⛓ ' + conn.maxRun + '連勤' + connSuffix + '</span>';
+        }
+        rowsHtml += '<td class="' + hoursClass + '" title="' + connTitle + '">' + hoursLabel + '</td>';
         rowsHtml += '</tr>';
       }
       return rowsHtml;
@@ -973,6 +1003,9 @@ var AdminShiftEdit = {
     // ホールセクション
     html += '<tr class="position-header"><td colspan="' + (daysInMonth + 2) + '">ホール (' + hallStaff.length + '名)</td></tr>';
     html += renderStaffRows(hallStaff);
+
+    // ホール／キッチン間に空行を入れて視覚的に区切る
+    html += '<tr class="position-spacer"><td colspan="' + (daysInMonth + 2) + '"></td></tr>';
 
     // キッチンセクション
     html += '<tr class="position-header"><td colspan="' + (daysInMonth + 2) + '">キッチン (' + kitchenStaff.length + '名)</td></tr>';
@@ -989,7 +1022,8 @@ var AdminShiftEdit = {
     for (var dd = 1; dd <= daysInMonth; dd++) {
       var ddDate = this.yearMonth + '-' + ('0' + dd).slice(-2);
       var ddDow = new Date(year, month - 1, dd).getDay();
-      var isWeekend = (ddDow === 0 || ddDow === 6);
+      // 祝日も土日扱い
+      var isWeekend = (window.Holidays ? window.Holidays.isWeekendOrHoliday(ddDate) : (ddDow === 0 || ddDow === 6));
       var hallMin = isWeekend ? hallMinWeekend : hallMinWeekday;
       var hallCount = dailyHallCount[ddDate] || 0;
       html += '<td class="' + (hallCount < hallMin ? 'shortage' : '') + '" title="最低' + hallMin + '人">' + hallCount + '</td>';
@@ -1001,7 +1035,8 @@ var AdminShiftEdit = {
     for (var dk = 1; dk <= daysInMonth; dk++) {
       var dkDate = this.yearMonth + '-' + ('0' + dk).slice(-2);
       var dkDow = new Date(year, month - 1, dk).getDay();
-      var isWeekendK = (dkDow === 0 || dkDow === 6);
+      // 祝日も土日扱い
+      var isWeekendK = (window.Holidays ? window.Holidays.isWeekendOrHoliday(dkDate) : (dkDow === 0 || dkDow === 6));
       var kitchenMin = isWeekendK ? kitchenMinWeekend : kitchenMinWeekday;
       var kitchenCount = dailyKitchenCount[dkDate] || 0;
       html += '<td class="' + (kitchenCount < kitchenMin ? 'shortage' : '') + '" title="最低' + kitchenMin + '人">' + kitchenCount + '</td>';
@@ -1049,7 +1084,7 @@ var AdminShiftEdit = {
     this.updateWorkHoursPreview();
   },
 
-  // 労働時間プレビュー
+  // 労働時間プレビュー＋労基法アラート
   updateWorkHoursPreview: function() {
     var startEl = document.getElementById('ase-modal-start');
     var endEl = document.getElementById('ase-modal-end');
@@ -1065,11 +1100,17 @@ var AdminShiftEdit = {
     var totalMin = endMin - startMin;
     var totalH = totalMin / 60;
     // 休憩計算（労基法: 6h超45分、8h超60分）
-    var breakMin = 0;
-    if (totalH > 8) breakMin = 60;
-    else if (totalH > 6) breakMin = 45;
-    var actualH = Math.round((totalMin - breakMin) / 60 * 10) / 10;
-    previewEl.innerHTML = '勤務: ' + totalH.toFixed(1) + 'h - 休憩: ' + breakMin + '分 = <span style="font-weight:bold;color:#4A3323">実働 ' + actualH + 'h</span>';
+    var requiredBreak = 0;
+    if (totalH > 8) requiredBreak = 60;
+    else if (totalH > 6) requiredBreak = 45;
+    var actualH = Math.round((totalMin - requiredBreak) / 60 * 10) / 10;
+    var html = '勤務: ' + totalH.toFixed(1) + 'h - 休憩: ' + requiredBreak + '分 = <span style="font-weight:bold;color:#4A3323">実働 ' + actualH + 'h</span>';
+    // 労基法アラート（自動で休憩を組み込んでいることをユーザーに明示）
+    if (requiredBreak > 0) {
+      var msg = totalH > 8 ? '8時間を超える勤務には1時間以上の休憩が必要です' : '6時間を超える勤務には45分以上の休憩が必要です';
+      html += '<div class="labor-law-alert">⚠ 労基法: ' + msg + '（自動で組み込み済み）</div>';
+    }
+    previewEl.innerHTML = html;
   },
 
   saveEntry: function() {
@@ -1464,7 +1505,8 @@ var AdminShiftEdit = {
     var daysInMonth = new Date(year, month, 0).getDate();
     var dateObj = new Date(year, month - 1, day);
     var dayNames = ['日', '月', '火', '水', '木', '金', '土'];
-    var isWeekend = (dateObj.getDay() === 0 || dateObj.getDay() === 6);
+    // 祝日も土日扱い
+    var isWeekend = (window.Holidays ? window.Holidays.isWeekendOrHoliday(date) : (dateObj.getDay() === 0 || dateObj.getDay() === 6));
 
     // 時間帯設定を取得
     var timeSlotStaffing = [];
@@ -1487,6 +1529,12 @@ var AdminShiftEdit = {
     html += '<button class="week-nav-btn" onclick="AdminShiftEdit.prevDay()">&#9664;</button>';
     html += '<span class="week-nav-label">' + month + '/' + day + '(' + dayNames[dateObj.getDay()] + ')' + (isWeekend ? ' [土日]' : ' [平日]') + '</span>';
     html += '<button class="week-nav-btn" onclick="AdminShiftEdit.nextDay()">&#9654;</button>';
+    html += '</div>';
+    // 凡例：色の意味を上部に明示
+    html += '<div class="gantt-legend">';
+    html += '<span class="legend-item"><span class="legend-swatch" style="background:#90A4AE"></span>勤務（ホール）</span>';
+    html += '<span class="legend-item"><span class="legend-swatch" style="background:#78909C"></span>勤務（キッチン）</span>';
+    html += '<span class="legend-item"><span class="legend-swatch" style="background:#FFE082;border:1px solid #FBC02D"></span>休憩</span>';
     html += '</div>';
 
     // ポジション別にスタッフを分ける
@@ -1544,10 +1592,55 @@ var AdminShiftEdit = {
               } else {
                 barStyle = staff.position === 'キッチン' ? 'background:#78909C;' : 'background:#90A4AE;';
               }
+              // 休憩時間の確認（労基法に対する不足を判定）
+              var totalH2 = (shiftEndMin - shiftStartMin) / 60;
+              var requiredBreak2 = totalH2 > 8 ? 60 : (totalH2 > 6 ? 45 : 0);
+              // 保存値が無い・不足する場合は労基法基準で自動表示する（実体上の休憩を可視化）
+              var savedBreak2 = (shift.breakMinutes != null) ? shift.breakMinutes : 0;
+              var actualBreak2 = Math.max(savedBreak2, requiredBreak2);
+              var laborViolation = (requiredBreak2 > 0 && savedBreak2 > 0 && savedBreak2 < requiredBreak2);
+              // ラベルは「開始-終了」のみ（休憩文字は黄色四角に書くので重複させない）
               var barLabel = shift.startTime + '-' + shift.endTime;
-              rowHtml += '<div class="' + barClass + '" style="width:calc(' + barWidth + ' * 100% + ' + (barWidth - 1) + 'px);' + barStyle + '" onclick="AdminShiftEdit.editShift(\'' + esc(shift.id) + '\',\'' + self.selectedDay + '\',\'' + esc(staff.id) + '\')" title="' + esc(staff.name + ' ' + barLabel + ' (' + (shift.creationMethod === '手動' ? '手動' : 'AI提案') + ')') + '">';
+              var barTitle = staff.name + ' ' + shift.startTime + '-' + shift.endTime + ' (' + (shift.creationMethod === '手動' ? '手動' : 'AI提案') + ')';
+              if (actualBreak2 > 0) {
+                var brkSrc = savedBreak2 > 0 ? '' : '（労基法による自動表示）';
+                barTitle += ' / 休憩' + actualBreak2 + '分' + brkSrc;
+              }
+              if (laborViolation) barTitle += ' ⚠ 労基法: 必要な休憩が不足（必要' + requiredBreak2 + '分 / 実際' + savedBreak2 + '分）';
+              // 休憩がある場合はバーを「グレー｜透明｜グレー」のlinear-gradientで分割表現
+              var barColorPick = (staff.position === 'キッチン') ? '#78909C' : '#90A4AE';
+              if (shift.creationMethod === '手動') {
+                barColorPick = (staff.position === 'キッチン') ? '#1E88E5' : '#5D6D7E';
+              }
+              var bgStyle = '';
+              var brkLeftPct = 0, brkWidthPct = 0;
+              if (actualBreak2 > 0) {
+                var midM = (shiftStartMin + shiftEndMin) / 2;
+                var brkS = midM - actualBreak2 / 2;
+                var brkE = midM + actualBreak2 / 2;
+                var spanMin = shiftEndMin - shiftStartMin;
+                brkLeftPct = ((brkS - shiftStartMin) / spanMin) * 100;
+                brkWidthPct = (actualBreak2 / spanMin) * 100;
+                var brkRightPct = brkLeftPct + brkWidthPct;
+                bgStyle = 'background:linear-gradient(to right,' + barColorPick + ' 0%,' + barColorPick + ' ' + brkLeftPct + '%,transparent ' + brkLeftPct + '%,transparent ' + brkRightPct + '%,' + barColorPick + ' ' + brkRightPct + '%,' + barColorPick + ' 100%);';
+              } else {
+                bgStyle = 'background:' + barColorPick + ';';
+              }
+              // 棒の幅は data-bar-width に持たせて、描画後に DOM 実測で px 直接指定する
+              rowHtml += '<div class="gantt-bar' + (laborViolation ? ' labor-violation' : '') + (actualBreak2 > 0 ? ' has-break' : '') + '" data-bar-width="' + barWidth + '" style="width:calc(' + barWidth + ' * 100%);left:0;' + bgStyle + '" onclick="AdminShiftEdit.editShift(\'' + esc(shift.id) + '\',\'' + self.selectedDay + '\',\'' + esc(staff.id) + '\')" title="' + esc(barTitle) + '">';
               rowHtml += '<span class="bar-handle left" onmousedown="AdminShiftEdit.startGanttDrag(event,\'' + esc(shift.id) + '\',\'left\')"></span>';
-              if (barWidth >= 4) rowHtml += esc(barLabel);
+              // ラベルは左半分（休憩前）の中央に表示
+              if (barWidth >= 4) {
+                var labelLeft = actualBreak2 > 0 ? brkLeftPct / 2 : 50;
+                rowHtml += '<span class="bar-label" style="left:' + labelLeft + '%">' + esc(barLabel) + '</span>';
+              }
+              // 休憩ゾーン：勤務時間の中央に黄色の四角を絶対配置
+              if (actualBreak2 > 0) {
+                rowHtml += '<span class="break-zone" style="left:' + brkLeftPct + '%;width:' + brkWidthPct + '%;">' + (barWidth >= 6 ? '休' + actualBreak2 + '分' : '休') + '</span>';
+              }
+              if (laborViolation) {
+                rowHtml += '<span class="violation-badge" title="労基法違反">!</span>';
+              }
               rowHtml += '<span class="bar-handle right" onmousedown="AdminShiftEdit.startGanttDrag(event,\'' + esc(shift.id) + '\',\'right\')"></span>';
               rowHtml += '</div>';
             }
@@ -1565,6 +1658,8 @@ var AdminShiftEdit = {
     }
 
     html += renderGanttRows(hallStaff, 'ホール');
+    // ホール／キッチン間に空行を入れて視覚的に区切る
+    html += '<tr class="gantt-position-spacer"><td colspan="' + (totalSlots + 1) + '"></td></tr>';
     html += renderGanttRows(kitchenStaff, 'キッチン');
 
     // 時間帯別の必要人数/実人数サマリー
@@ -1680,6 +1775,30 @@ var AdminShiftEdit = {
     }
 
     container.innerHTML = html;
+    // 描画完了後に、ガントバーの幅をDOMの実セル幅に基づいてpxで直接指定する
+    // （ブラウザによっては calc(N * 100%) が border 計算の影響で1〜数ピクセルずれるため、確実に治す）
+    setTimeout(function() { AdminShiftEdit.fixGanttBars(); }, 30);
+  },
+
+  // 描画後に呼ぶ：ガントバーをDOM実測のセル幅で正確に再配置する
+  fixGanttBars: function() {
+    var container = document.getElementById('ase-matrix');
+    if (!container) return;
+    var cells = container.querySelectorAll('.gantt-cell');
+    if (cells.length < 2) return;
+    // セルの実描画幅を取得（境界線分は getBoundingClientRect で正確に）
+    var rect0 = cells[0].getBoundingClientRect();
+    var rect1 = cells[1].getBoundingClientRect();
+    var cellW = rect1.left - rect0.left; // 隣接セル左端間距離 = 実セル幅 (border 込み)
+    if (cellW <= 0) cellW = rect0.width;
+    var bars = container.querySelectorAll('.gantt-bar[data-bar-width]');
+    for (var i = 0; i < bars.length; i++) {
+      var bw = parseInt(bars[i].getAttribute('data-bar-width'), 10);
+      if (bw > 0) {
+        // N個分の実幅 = N * cellW、最終セルの右borderは1px重なるので-1px補正
+        bars[i].style.width = (bw * cellW - 1) + 'px';
+      }
+    }
   },
 
   // ガントバーのドラッグ操作（30分刻みで調整）
@@ -1784,6 +1903,12 @@ var AdminShiftEdit = {
     html += '<span class="week-nav-label">' + month + '/' + weekStart + ' ~ ' + month + '/' + weekEnd + '</span>';
     html += '<button class="week-nav-btn" onclick="AdminShiftEdit.weekOffset++;AdminShiftEdit.renderGanttWeekView()">&#9654;</button>';
     html += '</div>';
+    // 凡例：色の意味を上部に明示
+    html += '<div class="gantt-legend">';
+    html += '<span class="legend-item"><span class="legend-swatch" style="background:#90A4AE"></span>勤務（ホール）</span>';
+    html += '<span class="legend-item"><span class="legend-swatch" style="background:#78909C"></span>勤務（キッチン）</span>';
+    html += '<span class="legend-item"><span class="legend-swatch" style="background:#FFE082;border:1px solid #FBC02D"></span>休憩</span>';
+    html += '</div>';
 
     // ヘルパー: 時間帯の実人数を計算
     function calcSlotCounts(dayShifts, slot, isWknd) {
@@ -1813,8 +1938,11 @@ var AdminShiftEdit = {
       if (d < 1 || d > daysInMonth) continue;
       var dateStr = this.yearMonth + '-' + ('0' + d).slice(-2);
       var dow = new Date(year, month - 1, d).getDay();
-      var isWeekend = (dow === 0 || dow === 6);
-      var dayStyle = dow === 0 ? 'color:#C62828' : (dow === 6 ? 'color:#1565C0' : '');
+      // 祝日も土日扱い
+      var isWeekend = (window.Holidays ? window.Holidays.isWeekendOrHoliday(dateStr) : (dow === 0 || dow === 6));
+      var isHol = (window.Holidays && window.Holidays.isHoliday(dateStr));
+      // 祝日も日曜と同じ赤色で表示
+      var dayStyle = (dow === 0 || isHol) ? 'color:#C62828' : (dow === 6 ? 'color:#1565C0' : '');
       var dayShifts = schedByDate[dateStr] || [];
 
       // 日ヘッダー
@@ -1849,37 +1977,106 @@ var AdminShiftEdit = {
       }
       html += '</tr>';
 
-      // シフトバー描画
-      for (var di2 = 0; di2 < dayShifts.length; di2++) {
-        var shift = dayShifts[di2];
-        var staff = staffMap[shift.staffId]; if (!staff) continue;
+      // シフトをホール/キッチンに分離（既存スタッフリスト順 = 正社員→アルバイト順を尊重）
+      var dayHallShifts = [];
+      var dayKitchenShifts = [];
+      for (var dsI = 0; dsI < dayShifts.length; dsI++) {
+        var stCheck = staffMap[dayShifts[dsI].staffId];
+        if (stCheck && stCheck.position === 'キッチン') {
+          dayKitchenShifts.push(dayShifts[dsI]);
+        } else {
+          dayHallShifts.push(dayShifts[dsI]);
+        }
+      }
+      var staffOrderMap = {};
+      for (var soI = 0; soI < this.staffList.length; soI++) staffOrderMap[this.staffList[soI].id] = soI;
+      function sortByStaff(arr) {
+        return arr.slice().sort(function(a, b) { return (staffOrderMap[a.staffId] || 0) - (staffOrderMap[b.staffId] || 0); });
+      }
+      dayHallShifts = sortByStaff(dayHallShifts);
+      dayKitchenShifts = sortByStaff(dayKitchenShifts);
+
+      // 1シフト分の <tr> を生成
+      function renderShiftRowLocal(shift) {
+        var staff = staffMap[shift.staffId]; if (!staff) return '';
         var empBadge = staff.employmentType === '正社員' ? '<span class="emp-badge fulltime">社</span>' : '';
         var posLabel = staff.position === 'キッチン' ? '<span style="color:#1565C0;font-size:9px"> K</span>' : '<span style="color:#2E7D32;font-size:9px"> H</span>';
-        html += '<tr class="gantt-row"><td class="gantt-name-cell" style="font-size:10px">' + esc(staff.name) + posLabel + empBadge + '</td>';
-
+        var rowH = '<tr class="gantt-row"><td class="gantt-name-cell" style="font-size:10px">' + esc(staff.name) + posLabel + empBadge + '</td>';
         for (var slot2 = 0; slot2 < totalSlots; slot2++) {
-          html += '<td class="gantt-cell">';
+          rowH += '<td class="gantt-cell">';
           var shSMin = parseInt(shift.startTime.split(':')[0]) * 60 + parseInt(shift.startTime.split(':')[1]);
           var shEMin = parseInt(shift.endTime.split(':')[0]) * 60 + parseInt(shift.endTime.split(':')[1]);
           var slMin = (startHour + Math.floor(slot2 / 2)) * 60 + (slot2 % 2) * 30;
           if (slMin === shSMin) {
             var bw = Math.round((shEMin - shSMin) / 30);
-            var barCls = 'gantt-bar';
-            var barSt = '';
+            // 休憩計算と労基法判定
+            var totalH3 = (shEMin - shSMin) / 60;
+            var requiredBreakW = totalH3 > 8 ? 60 : (totalH3 > 6 ? 45 : 0);
+            var savedBreakW = (shift.breakMinutes != null) ? shift.breakMinutes : 0;
+            var actualBreakW = Math.max(savedBreakW, requiredBreakW);
+            var laborViolationW = (requiredBreakW > 0 && savedBreakW > 0 && savedBreakW < requiredBreakW);
+            // バーラベル（休憩文字は黄色四角に書くので重複させない）
+            var barLabelW = shift.startTime + '-' + shift.endTime;
+            var barTitleW = staff.name + ' ' + shift.startTime + '-' + shift.endTime;
+            if (actualBreakW > 0) barTitleW += ' / 休憩' + actualBreakW + '分' + (savedBreakW > 0 ? '' : '（自動）');
+            if (laborViolationW) barTitleW += ' ⚠ 労基法違反';
+            // 休憩がある場合はバーを「グレー｜透明｜グレー」のlinear-gradientで分割表現
+            var barColorW = (staff.position === 'キッチン') ? '#78909C' : '#90A4AE';
             if (shift.creationMethod === '手動') {
-              barCls += ' ' + (staff.position === 'キッチン' ? 'kitchen' : 'hall');
-            } else {
-              barSt = staff.position === 'キッチン' ? 'background:#78909C;' : 'background:#90A4AE;';
+              barColorW = (staff.position === 'キッチン') ? '#1E88E5' : '#5D6D7E';
             }
-            html += '<div class="' + barCls + '" style="width:calc(' + bw + ' * 100% + ' + (bw - 1) + 'px);' + barSt + '" onclick="AdminShiftEdit.editShift(\'' + esc(shift.id) + '\',\'' + dateStr + '\',\'' + esc(shift.staffId) + '\')" title="' + esc(staff.name + ' ' + shift.startTime + '-' + shift.endTime) + '">';
-            html += '<span class="bar-handle left" onmousedown="AdminShiftEdit.startGanttDrag(event,\'' + esc(shift.id) + '\',\'left\')"></span>';
-            if (bw >= 3) html += '<span style="pointer-events:none">' + esc(shift.startTime + '-' + shift.endTime) + '</span>';
-            html += '<span class="bar-handle right" onmousedown="AdminShiftEdit.startGanttDrag(event,\'' + esc(shift.id) + '\',\'right\')"></span>';
-            html += '</div>';
+            var bgStyleW = '';
+            var brkLeftPct2 = 0, brkWidthPct2 = 0;
+            if (actualBreakW > 0) {
+              var midM2 = (shEMin + shSMin) / 2;
+              var brkS2 = midM2 - actualBreakW / 2;
+              var brkE2 = midM2 + actualBreakW / 2;
+              var spanMin2 = shEMin - shSMin;
+              brkLeftPct2 = ((brkS2 - shSMin) / spanMin2) * 100;
+              brkWidthPct2 = (actualBreakW / spanMin2) * 100;
+              var brkRightPct2 = brkLeftPct2 + brkWidthPct2;
+              bgStyleW = 'background:linear-gradient(to right,' + barColorW + ' 0%,' + barColorW + ' ' + brkLeftPct2 + '%,transparent ' + brkLeftPct2 + '%,transparent ' + brkRightPct2 + '%,' + barColorW + ' ' + brkRightPct2 + '%,' + barColorW + ' 100%);';
+            } else {
+              bgStyleW = 'background:' + barColorW + ';';
+            }
+            rowH += '<div class="gantt-bar' + (laborViolationW ? ' labor-violation' : '') + (actualBreakW > 0 ? ' has-break' : '') + '" data-bar-width="' + bw + '" style="width:calc(' + bw + ' * 100%);left:0;' + bgStyleW + '" onclick="AdminShiftEdit.editShift(\'' + esc(shift.id) + '\',\'' + dateStr + '\',\'' + esc(shift.staffId) + '\')" title="' + esc(barTitleW) + '">';
+            rowH += '<span class="bar-handle left" onmousedown="AdminShiftEdit.startGanttDrag(event,\'' + esc(shift.id) + '\',\'left\')"></span>';
+            // ラベルは左半分（休憩前）の中央に表示
+            if (bw >= 3) {
+              var labelLeftW = actualBreakW > 0 ? brkLeftPct2 / 2 : 50;
+              rowH += '<span class="bar-label" style="left:' + labelLeftW + '%">' + esc(barLabelW) + '</span>';
+            }
+            // 休憩ゾーン：勤務時間の中央に黄色の四角を絶対配置
+            if (actualBreakW > 0) {
+              rowH += '<span class="break-zone" style="left:' + brkLeftPct2 + '%;width:' + brkWidthPct2 + '%;">' + (bw >= 6 ? '休' + actualBreakW + '分' : '休') + '</span>';
+            }
+            if (laborViolationW) rowH += '<span class="violation-badge" title="労基法違反">!</span>';
+            rowH += '<span class="bar-handle right" onmousedown="AdminShiftEdit.startGanttDrag(event,\'' + esc(shift.id) + '\',\'right\')"></span>';
+            rowH += '</div>';
           }
-          html += '</td>';
+          rowH += '</td>';
         }
-        html += '</tr>';
+        rowH += '</tr>';
+        return rowH;
+      }
+
+      // ホールセクション
+      if (dayHallShifts.length > 0) {
+        html += '<tr class="gantt-position-header"><td colspan="' + (totalSlots + 1) + '">ホール (' + dayHallShifts.length + '名)</td></tr>';
+        for (var dsh = 0; dsh < dayHallShifts.length; dsh++) {
+          html += renderShiftRowLocal(dayHallShifts[dsh]);
+        }
+      }
+      // 区切り空行（両方ある場合のみ）
+      if (dayHallShifts.length > 0 && dayKitchenShifts.length > 0) {
+        html += '<tr class="gantt-position-spacer"><td colspan="' + (totalSlots + 1) + '"></td></tr>';
+      }
+      // キッチンセクション
+      if (dayKitchenShifts.length > 0) {
+        html += '<tr class="gantt-position-header"><td colspan="' + (totalSlots + 1) + '">キッチン (' + dayKitchenShifts.length + '名)</td></tr>';
+        for (var dsk = 0; dsk < dayKitchenShifts.length; dsk++) {
+          html += renderShiftRowLocal(dayKitchenShifts[dsk]);
+        }
       }
 
       // 未配置スタッフ（この日にシフトなし）
@@ -1899,6 +2096,8 @@ var AdminShiftEdit = {
     }
 
     container.innerHTML = html;
+    // 描画後にガントバーを実測pxで再配置（複数の table を同時に処理）
+    setTimeout(function() { AdminShiftEdit.fixGanttBars(); }, 30);
   },
 
   // 不足文面を自動生成する
@@ -2197,7 +2396,9 @@ var AdminShiftEdit = {
         // 人員不足を赤く
         if (sc2 >= 2 && sc2 <= daysInMonth + 1 && typeof sumCell.value === 'number') {
           var sDow = new Date(year, month - 1, sc2 - 1).getDay();
-          var isWknd = (sDow === 0 || sDow === 6);
+          // 祝日も土日扱い
+          var sDateStr = this.yearMonth + '-' + ('0' + (sc2 - 1)).slice(-2);
+          var isWknd = (window.Holidays ? window.Holidays.isWeekendOrHoliday(sDateStr) : (sDow === 0 || sDow === 6));
           var minReq = isWknd ? minWeekend : minWeekday;
           if (sumCell.value < minReq) {
             sumCell.font = {name: 'Yu Gothic', bold: true, size: 9, color: {argb: C_RED_DARK}};
@@ -2209,6 +2410,182 @@ var AdminShiftEdit = {
 
     addSummaryRow('ホール出勤', dailyHallCount, hallMinWeekday, hallMinWeekend);
     addSummaryRow('キッチン出勤', dailyKitchenCount, kitchenMinWeekday, kitchenMinWeekend);
+
+    // ====== 5-1: 週別ガントチャートシート（週ごとに1シート、シート内に各日のガントチャート） ======
+    // 月内を日曜始まりで週に分割
+    var weeks = [];
+    var firstDow = new Date(year, month - 1, 1).getDay();
+    var wkStart = 1;
+    var wkEnd = Math.min(7 - firstDow, daysInMonth);
+    weeks.push({ start: wkStart, end: wkEnd });
+    wkStart = wkEnd + 1;
+    while (wkStart <= daysInMonth) {
+      var we = Math.min(wkStart + 6, daysInMonth);
+      weeks.push({ start: wkStart, end: we });
+      wkStart = we + 1;
+    }
+
+    var ganttDayNames = ['日','月','火','水','木','金','土'];
+    var GANT_START_H = 6;
+    var GANT_END_H = 24;
+    var GANT_SLOTS = (GANT_END_H - GANT_START_H) * 2; // 36 個（30分単位）
+    var GANT_TOTAL_COLS = 1 + GANT_SLOTS + 1;          // 名前 + 36 + 実働
+
+    // 1日分のガントチャートを描画（startRow から開始、使った行数を返す）
+    function renderDayGantt(ws, startRow, dateStr) {
+      var d = new Date(dateStr);
+      var dayLabel = (d.getMonth() + 1) + '/' + d.getDate() + '（' + ganttDayNames[d.getDay()] + '）';
+
+      // この日のシフト
+      var dayShifts = [];
+      for (var i = 0; i < self.schedules.length; i++) {
+        if (self.schedules[i].date === dateStr) dayShifts.push(self.schedules[i]);
+      }
+      if (dayShifts.length === 0) {
+        ws.mergeCells(startRow, 1, startRow, GANT_TOTAL_COLS);
+        var noShiftCell = ws.getCell(startRow, 1);
+        noShiftCell.value = dayLabel + ' - シフトなし';
+        noShiftCell.font = {name: 'Yu Gothic', bold: true, size: 11, color: {argb: 'FF888888'}};
+        noShiftCell.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: C_GRAY_LIGHT}};
+        noShiftCell.alignment = {horizontal: 'left', vertical: 'middle', indent: 1};
+        return 1;
+      }
+
+      // 行1: 日付ヘッダ
+      ws.mergeCells(startRow, 1, startRow, GANT_TOTAL_COLS);
+      var dateCell = ws.getCell(startRow, 1);
+      dateCell.value = dayLabel + '  (' + dayShifts.length + '名配置)';
+      dateCell.font = {name: 'Yu Gothic', bold: true, size: 12, color: {argb: C_WHITE}};
+      dateCell.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: C_BROWN_DARK}};
+      dateCell.alignment = {horizontal: 'left', vertical: 'middle', indent: 1};
+      ws.getRow(startRow).height = 22;
+
+      // 行2: 時間ヘッダ（1時間ごとに2列マージ）
+      var hourRow = ws.getRow(startRow + 1);
+      hourRow.getCell(1).value = '名前';
+      for (var hh = GANT_START_H; hh < GANT_END_H; hh++) {
+        var colIdx = 2 + (hh - GANT_START_H) * 2;
+        ws.mergeCells(startRow + 1, colIdx, startRow + 1, colIdx + 1);
+        hourRow.getCell(colIdx).value = hh;
+      }
+      hourRow.getCell(GANT_TOTAL_COLS).value = '実働';
+      for (var hci = 1; hci <= GANT_TOTAL_COLS; hci++) {
+        var hcCell = hourRow.getCell(hci);
+        hcCell.font = {name: 'Yu Gothic', bold: true, size: 9, color: {argb: C_WHITE}};
+        hcCell.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: C_BROWN_MED}};
+        hcCell.alignment = {horizontal: 'left', vertical: 'middle', indent: 1};
+        hcCell.border = defaultBorder;
+      }
+      hourRow.height = 18;
+
+      // この日のシフトを「ホール→キッチン」の順に並べる
+      var schX = {};
+      for (var di = 0; di < dayShifts.length; di++) schX[dayShifts[di].staffId] = dayShifts[di];
+      var orderedStaff = hallStaff.concat(kitchenStaff);
+      var todayStaff = orderedStaff.filter(function(s) { return schX[s.id]; });
+
+      var rowI = startRow + 2;
+      for (var sI = 0; sI < todayStaff.length; sI++) {
+        var st = todayStaff[sI];
+        var sh = schX[st.id];
+        var startMinX = parseInt(sh.startTime.split(':')[0]) * 60 + parseInt(sh.startTime.split(':')[1]);
+        var endMinX = parseInt(sh.endTime.split(':')[0]) * 60 + parseInt(sh.endTime.split(':')[1]);
+        var totalH = (endMinX - startMinX) / 60;
+        var brkMin = (sh.breakMinutes != null && sh.breakMinutes > 0) ? sh.breakMinutes : (totalH > 8 ? 60 : (totalH > 6 ? 45 : 0));
+        // 休憩位置（勤務時間の中央に配置）
+        var midMin = (startMinX + endMinX) / 2;
+        var brkStartMin = brkMin > 0 ? midMin - brkMin / 2 : -1;
+        var brkEndMin = brkMin > 0 ? midMin + brkMin / 2 : -1;
+
+        var rowR = ws.getRow(rowI);
+        var posLabel = (st.position === 'キッチン') ? 'K' : 'H';
+        rowR.getCell(1).value = st.name + ' [' + posLabel + ']';
+        rowR.getCell(1).font = {name: 'Yu Gothic', bold: true, size: 10};
+        rowR.getCell(1).alignment = {horizontal: 'left', vertical: 'middle', indent: 1};
+        rowR.getCell(1).border = defaultBorder;
+        rowR.getCell(1).fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: C_GRAY_LIGHT}};
+
+        // 時間スロットの色塗り
+        var workColor = (st.position === 'キッチン') ? 'FF1E88E5' : 'FF8D6E63';
+        var breakColor = 'FFFFE082'; // 休憩は薄めの黄色（Webアプリと統一）
+        var breakLabelShown = false;
+        for (var slotJ = 0; slotJ < GANT_SLOTS; slotJ++) {
+          var slotS = (GANT_START_H + Math.floor(slotJ / 2)) * 60 + (slotJ % 2) * 30;
+          var slotE = slotS + 30;
+          var cellR = rowR.getCell(2 + slotJ);
+          cellR.border = defaultBorder;
+          if (slotS >= startMinX && slotE <= endMinX) {
+            if (brkMin > 0 && slotS >= brkStartMin && slotE <= brkEndMin) {
+              cellR.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: breakColor}};
+              // 休憩開始セルに「休XX分」と表示する（白いラベルだと埋もれるので濃茶で）
+              if (!breakLabelShown) {
+                cellR.value = '休' + brkMin + '分';
+                cellR.font = {name: 'Yu Gothic', bold: true, size: 8, color: {argb: 'FF5D4037'}};
+                cellR.alignment = {horizontal: 'left', vertical: 'middle', indent: 1};
+                breakLabelShown = true;
+              }
+            } else {
+              cellR.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: workColor}};
+            }
+          }
+        }
+
+        // 開始セルにシフト時刻ラベルを上書き表示
+        var startSlotIdx = Math.floor((startMinX - GANT_START_H * 60) / 30);
+        if (startSlotIdx >= 0 && startSlotIdx < GANT_SLOTS) {
+          var labelCell = rowR.getCell(2 + startSlotIdx);
+          labelCell.value = sh.startTime + '-' + sh.endTime + (brkMin > 0 ? ' (休' + brkMin + ')' : '');
+          labelCell.font = {name: 'Yu Gothic', bold: true, size: 8, color: {argb: C_WHITE}};
+          labelCell.alignment = {horizontal: 'left', vertical: 'middle', indent: 1};
+        }
+
+        // 実働時間（休憩を引いた時間）
+        var actualH = (endMinX - startMinX - brkMin) / 60;
+        var totalCell = rowR.getCell(GANT_TOTAL_COLS);
+        totalCell.value = Math.round(actualH * 10) / 10;
+        totalCell.numFmt = '0.0"h"';
+        totalCell.font = {name: 'Yu Gothic', bold: true, size: 10, color: {argb: C_BROWN_DARK}};
+        totalCell.alignment = {horizontal: 'right', vertical: 'middle'};
+        totalCell.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: C_CREAM}};
+        totalCell.border = defaultBorder;
+        rowR.height = 20;
+        rowI++;
+      }
+      return rowI - startRow;
+    }
+
+    // 週ごとにシート作成
+    for (var wIdx2 = 0; wIdx2 < weeks.length; wIdx2++) {
+      var wEntry = weeks[wIdx2];
+      var ganttWs = workbook.addWorksheet('第' + (wIdx2 + 1) + '週ガント', { properties: { defaultRowHeight: 18 } });
+
+      // 列幅
+      var ganttCols = [{ width: 14 }];
+      for (var gci = 0; gci < GANT_SLOTS; gci++) ganttCols.push({ width: 2.6 });
+      ganttCols.push({ width: 8 });
+      ganttWs.columns = ganttCols;
+
+      // 1列目を凍結
+      ganttWs.views = [{ state: 'frozen', xSplit: 1, ySplit: 0 }];
+
+      var rowCursor = 1;
+      // 週タイトル
+      ganttWs.mergeCells(rowCursor, 1, rowCursor, GANT_TOTAL_COLS);
+      var weekTitle = ganttWs.getCell(rowCursor, 1);
+      weekTitle.value = '第' + (wIdx2 + 1) + '週: ' + month + '/' + wEntry.start + '〜' + month + '/' + wEntry.end + '  ' + storeName;
+      weekTitle.font = {name: 'Yu Gothic', bold: true, size: 14, color: {argb: C_WHITE}};
+      weekTitle.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: C_BROWN_DARK}};
+      weekTitle.alignment = {horizontal: 'center', vertical: 'middle'};
+      ganttWs.getRow(rowCursor).height = 30;
+      rowCursor += 2;
+
+      // 各日のガントチャート
+      for (var dayN = wEntry.start; dayN <= wEntry.end; dayN++) {
+        var dStr = self.yearMonth + '-' + ('0' + dayN).slice(-2);
+        var rowsUsed = renderDayGantt(ganttWs, rowCursor, dStr);
+        rowCursor += rowsUsed + 1; // 1行スペース
+      }
+    }
 
     // ====== ダウンロード ======
     var fileName = year + '年' + month + '月_' + storeName + '_シフト表.xlsx';
@@ -2421,14 +2798,16 @@ var LaborCost = {
     document.getElementById('alc-total-cost').textContent = App.formatCurrency(report.totalCost) + '円';
     document.getElementById('alc-staff-count').textContent = report.staffCosts.length + '人';
     var costs = report.staffCosts;
-    var html = '<div class="table-wrapper"><table class="data-table"><tr><th>スタッフ</th><th>区分</th><th>労働時間</th><th>基本給</th><th>深夜手当</th><th>残業手当</th><th>交通費</th><th>合計</th></tr>';
-    var totalHours = 0, totalBase = 0, totalLate = 0, totalOT = 0, totalTrans = 0;
+    var html = '<div class="table-wrapper"><table class="data-table"><tr><th>スタッフ</th><th>区分</th><th>労働時間</th><th>基本給</th><th>深夜手当</th><th>残業手当</th><th>手当<br><span style="font-weight:normal;font-size:10px">(ピーク+土日祝)</span></th><th>交通費</th><th>合計</th></tr>';
+    var totalHours = 0, totalBase = 0, totalLate = 0, totalOT = 0, totalBonus = 0, totalTrans = 0;
     for (var i = 0; i < costs.length; i++) {
       var c = costs[i];
-      html += '<tr><td class="text-bold">' + esc(c.name) + '</td><td>' + esc(c.employmentType) + '</td><td class="text-right">' + App.formatHours(c.totalHours) + 'h</td><td class="text-right">' + App.formatCurrency(c.basePay) + '</td><td class="text-right">' + App.formatCurrency(c.lateNightPay) + '</td><td class="text-right">' + App.formatCurrency(c.overtimePay) + '</td><td class="text-right">' + App.formatCurrency(c.transportTotal) + '</td><td class="text-right text-bold">' + App.formatCurrency(c.totalCost) + '</td></tr>';
-      totalHours += c.totalHours || 0; totalBase += c.basePay || 0; totalLate += c.lateNightPay || 0; totalOT += c.overtimePay || 0; totalTrans += c.transportTotal || 0;
+      var bonusSum = (c.peakBonusPay || 0) + (c.weekendBonusPay || 0);
+      var bonusTitle = 'ピーク手当: ' + App.formatCurrency(c.peakBonusPay || 0) + '円 / 土日祝手当: ' + App.formatCurrency(c.weekendBonusPay || 0) + '円';
+      html += '<tr><td class="text-bold">' + esc(c.name) + '</td><td>' + esc(c.employmentType) + '</td><td class="text-right">' + App.formatHours(c.totalHours) + 'h</td><td class="text-right">' + App.formatCurrency(c.basePay) + '</td><td class="text-right">' + App.formatCurrency(c.lateNightPay) + '</td><td class="text-right">' + App.formatCurrency(c.overtimePay) + '</td><td class="text-right" title="' + esc(bonusTitle) + '">' + App.formatCurrency(bonusSum) + '</td><td class="text-right">' + App.formatCurrency(c.transportTotal) + '</td><td class="text-right text-bold">' + App.formatCurrency(c.totalCost) + '</td></tr>';
+      totalHours += c.totalHours || 0; totalBase += c.basePay || 0; totalLate += c.lateNightPay || 0; totalOT += c.overtimePay || 0; totalBonus += bonusSum; totalTrans += c.transportTotal || 0;
     }
-    html += '<tr style="background-color:#F0E8DC;font-weight:bold"><td colspan="2">合計</td><td class="text-right">' + App.formatHours(totalHours) + 'h</td><td class="text-right">' + App.formatCurrency(totalBase) + '</td><td class="text-right">' + App.formatCurrency(totalLate) + '</td><td class="text-right">' + App.formatCurrency(totalOT) + '</td><td class="text-right">' + App.formatCurrency(totalTrans) + '</td><td class="text-right text-accent">' + App.formatCurrency(report.totalCost) + '</td></tr>';
+    html += '<tr style="background-color:#F0E8DC;font-weight:bold"><td colspan="2">合計</td><td class="text-right">' + App.formatHours(totalHours) + 'h</td><td class="text-right">' + App.formatCurrency(totalBase) + '</td><td class="text-right">' + App.formatCurrency(totalLate) + '</td><td class="text-right">' + App.formatCurrency(totalOT) + '</td><td class="text-right">' + App.formatCurrency(totalBonus) + '</td><td class="text-right">' + App.formatCurrency(totalTrans) + '</td><td class="text-right text-accent">' + App.formatCurrency(report.totalCost) + '</td></tr>';
     html += '</table></div>';
     document.getElementById('alc-table').innerHTML = html;
   }
@@ -2443,6 +2822,8 @@ function onShow_admin_labor_cost() { LaborCost.init(); }
 var StoreSettings = {
   settings: {},
   timeSlotStaffing: [],
+  // 1-1: ピーク手当（時間帯別追加時給）。店舗ごとに保存
+  peakHourBonuses: [],
 
   init: function() {
     var self = this;
@@ -2463,6 +2844,10 @@ var StoreSettings = {
           { start: '17:00', end: '22:00', weekdayHall: 5, weekdayKitchen: 3, weekendHall: 7, weekendKitchen: 4, label: 'ディナー' }
         ];
       }
+      // 1-1 ピーク手当の読み込み
+      try {
+        self.peakHourBonuses = JSON.parse(settings['ピーク手当設定'] || '[]');
+      } catch(e) { self.peakHourBonuses = []; }
       self.render();
     }).catch(function() {
       App.hideLoading();
@@ -2503,8 +2888,15 @@ var StoreSettings = {
     if (closeEl) closeEl.value = s['営業終了'] || '23:00';
     // 締切日
     document.getElementById('set-deadline-day').value = s['希望提出締切日'] || '20';
+    // 1-2 曜日手当（平日・土日祝の時給加算）
+    var wbEl = document.getElementById('set-weekday-bonus');
+    var hbEl = document.getElementById('set-weekend-bonus');
+    if (wbEl) wbEl.value = s['平日時給加算'] || '0';
+    if (hbEl) hbEl.value = s['土日祝時給加算'] || '0';
     // 時間帯別人数
     this.renderTimeSlots();
+    // 1-1 ピーク手当
+    this.renderPeakBonuses();
   },
 
   renderTimeSlots: function() {
@@ -2567,7 +2959,63 @@ var StoreSettings = {
     this.renderTimeSlots();
   },
 
+  // 1-1 ピーク手当の描画
+  renderPeakBonuses: function() {
+    var container = document.getElementById('peak-bonus-container');
+    if (!container) return;
+    if (this.peakHourBonuses.length === 0) {
+      container.innerHTML = '<p class="text-muted text-sm" style="margin:8px 0">ピーク手当は設定されていません。「+ ピーク手当を追加」から登録してください。</p>';
+      return;
+    }
+    var html = '';
+    for (var i = 0; i < this.peakHourBonuses.length; i++) {
+      var pb = this.peakHourBonuses[i];
+      html += '<div class="time-slot-row" style="border:1px solid #D7CCC8;border-radius:8px;padding:12px;margin-bottom:8px;background:#FFF8E1">';
+      html += '<div class="flex gap-8" style="align-items:center;flex-wrap:wrap">';
+      html += '<input type="text" class="form-input" style="width:90px;font-size:13px" value="' + esc(pb.label || '') + '" data-pb="' + i + '" data-field="label" placeholder="名前" onchange="StoreSettings.updatePeakBonus(this)">';
+      html += '<select class="form-select" style="width:80px;font-size:13px" data-pb="' + i + '" data-field="start" onchange="StoreSettings.updatePeakBonus(this)">';
+      html += StoreSettings.timeOptions(pb.start);
+      html += '</select>';
+      html += '<span>~</span>';
+      html += '<select class="form-select" style="width:80px;font-size:13px" data-pb="' + i + '" data-field="end" onchange="StoreSettings.updatePeakBonus(this)">';
+      html += StoreSettings.timeOptions(pb.end);
+      html += '</select>';
+      html += '<span style="font-size:12px">+</span>';
+      html += '<input type="number" class="form-input" style="width:80px;font-size:13px" value="' + (pb.bonus || 0) + '" min="0" max="2000" data-pb="' + i + '" data-field="bonus" onchange="StoreSettings.updatePeakBonus(this)">';
+      html += '<span class="text-muted text-sm">円/時</span>';
+      html += '<button class="btn btn-outline btn-sm" style="color:#C62828;border-color:#C62828;padding:2px 8px;font-size:11px" onclick="StoreSettings.removePeakBonus(' + i + ')">削除</button>';
+      html += '</div></div>';
+    }
+    container.innerHTML = html;
+  },
+
+  updatePeakBonus: function(el) {
+    var idx = parseInt(el.getAttribute('data-pb'));
+    var field = el.getAttribute('data-field');
+    var val = el.value;
+    if (field === 'bonus') val = parseInt(val) || 0;
+    this.peakHourBonuses[idx][field] = val;
+  },
+
+  addPeakBonus: function() {
+    this.peakHourBonuses.push({ start: '12:00', end: '14:00', bonus: 200, label: 'ランチ' });
+    this.renderPeakBonuses();
+  },
+
+  removePeakBonus: function(idx) {
+    this.peakHourBonuses.splice(idx, 1);
+    this.renderPeakBonuses();
+  },
+
   save: function() {
+    // ピーク手当の整合性チェック（開始 < 終了 / 同日内）
+    for (var i = 0; i < this.peakHourBonuses.length; i++) {
+      var pb = this.peakHourBonuses[i];
+      if (pb.start >= pb.end) {
+        App.showToast('ピーク手当 ' + (pb.label || (i + 1) + '番目') + ' の時間帯が不正です（開始 >= 終了）', 'error');
+        return;
+      }
+    }
     var newSettings = {
       '平日ホール最低人数': document.getElementById('set-weekday-hall').value,
       '平日キッチン最低人数': document.getElementById('set-weekday-kitchen').value,
@@ -2576,7 +3024,10 @@ var StoreSettings = {
       '営業開始': document.getElementById('set-open-time').value,
       '営業終了': document.getElementById('set-close-time').value,
       '希望提出締切日': document.getElementById('set-deadline-day').value,
-      '時間帯別必要人数': JSON.stringify(this.timeSlotStaffing)
+      '時間帯別必要人数': JSON.stringify(this.timeSlotStaffing),
+      '平日時給加算': document.getElementById('set-weekday-bonus').value || '0',
+      '土日祝時給加算': document.getElementById('set-weekend-bonus').value || '0',
+      'ピーク手当設定': JSON.stringify(this.peakHourBonuses)
     };
 
     App.showLoading('設定を保存中...');
@@ -2595,3 +3046,160 @@ var StoreSettings = {
 };
 
 function onShow_admin_store_settings() { StoreSettings.init(); }
+
+// ========================================
+// 5-3 給与明細 - スタッフ用（自分の明細閲覧）
+// ========================================
+var StaffPayslip = {
+  months: [],
+  init: function() {
+    var self = this;
+    var container = document.getElementById('staff-payslip-month-list');
+    if (container) container.innerHTML = '読み込み中...';
+    API.listMyPayslipMonths().then(function(result) {
+      if (result && result.success) {
+        self.months = result.months || [];
+        self.render();
+      } else {
+        if (container) container.innerHTML = '<p class="text-muted">' + esc((result && result.message) || '読み込み失敗') + '</p>';
+      }
+    }).catch(function() {
+      if (container) container.innerHTML = '<p class="text-muted">読み込みに失敗しました</p>';
+    });
+  },
+  render: function() {
+    var container = document.getElementById('staff-payslip-month-list');
+    if (!container) return;
+    if (this.months.length === 0) {
+      container.innerHTML = '<p class="text-muted">給与明細はまだ登録されていません。店長に確認してください。</p>';
+      return;
+    }
+    var html = '<div class="menu-grid">';
+    for (var i = 0; i < this.months.length; i++) {
+      var m = this.months[i];
+      var p = m.split('-');
+      var label = p[0] + '年' + parseInt(p[1]) + '月';
+      html += '<div class="card clickable menu-card" onclick="StaffPayslip.viewDetail(\'' + esc(m) + '\')">';
+      html += '<div class="card-icon">&#128196;</div>';
+      html += '<div class="card-title">' + esc(label) + '</div>';
+      html += '<div class="card-subtitle">給与明細を見る</div>';
+      html += '</div>';
+    }
+    html += '</div>';
+    container.innerHTML = html;
+  },
+  viewDetail: function(yearMonth) {
+    App.showScreen('staff-payslip-detail', { yearMonth: yearMonth });
+  },
+  loadDetail: function(yearMonth) {
+    var titleEl = document.getElementById('staff-payslip-detail-title');
+    var bodyEl = document.getElementById('staff-payslip-detail-body');
+    var p = yearMonth.split('-');
+    if (titleEl) titleEl.textContent = p[0] + '年' + parseInt(p[1]) + '月の給与明細';
+    if (bodyEl) bodyEl.innerHTML = '読み込み中...';
+    API.getMyPayslip(yearMonth).then(function(result) {
+      if (!result.success) {
+        bodyEl.innerHTML = '<p class="text-muted">' + esc(result.message || '取得失敗') + '</p>';
+        return;
+      }
+      var slip = result.payslip;
+      var html = '<div class="table-wrapper"><table class="data-table"><tr><th>項目</th><th class="text-right">内容</th></tr>';
+      var keys = Object.keys(slip.data || {});
+      for (var i = 0; i < keys.length; i++) {
+        var v = slip.data[keys[i]];
+        html += '<tr><td class="text-bold">' + esc(keys[i]) + '</td><td class="text-right">' + esc(String(v == null ? '' : v)) + '</td></tr>';
+      }
+      html += '</table></div>';
+      bodyEl.innerHTML = html;
+    }).catch(function() {
+      bodyEl.innerHTML = '<p class="text-muted">取得に失敗しました</p>';
+    });
+  }
+};
+function onShow_staff_payslip_list() { StaffPayslip.init(); }
+function onShow_staff_payslip_detail(params) {
+  if (params && params.yearMonth) StaffPayslip.loadDetail(params.yearMonth);
+}
+
+// ========================================
+// 5-3 給与明細 - 管理者用（CSV取込・閲覧）
+// ========================================
+var AdminPayslip = {
+  init: function() {
+    var now = new Date();
+    var ym = now.getFullYear() + '-' + ('0' + (now.getMonth() + 1)).slice(-2);
+    var t = document.getElementById('payslip-target-month');
+    var v = document.getElementById('payslip-view-month');
+    if (t && !t.value) t.value = ym;
+    if (v && !v.value) v.value = ym;
+    this.loadList();
+  },
+  loadFile: function(input) {
+    if (!input.files || !input.files[0]) return;
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      document.getElementById('payslip-csv-text').value = e.target.result;
+    };
+    reader.readAsText(input.files[0]);
+  },
+  upload: function() {
+    var ym = document.getElementById('payslip-target-month').value;
+    var csv = document.getElementById('payslip-csv-text').value;
+    if (!ym) { App.showToast('対象月を入力してください', 'error'); return; }
+    if (!csv || csv.trim() === '') { App.showToast('CSVを入力してください', 'error'); return; }
+    App.showLoading('取込中...'); var self = this;
+    API.uploadPayslipCsv(ym, csv).then(function(result) {
+      App.hideLoading();
+      if (result.success) {
+        App.showToast(result.message || '取込しました', 'success');
+        if (result.unmatched && result.unmatched.length > 0) {
+          alert('一部の氏名が一致せずスキップされました:\n\n' + result.unmatched.join('\n') + '\n\n氏名の表記がスタッフ管理と完全一致しているか確認してください。');
+        }
+        document.getElementById('payslip-view-month').value = ym;
+        self.loadList();
+      } else {
+        App.showToast(result.message || '取込失敗', 'error');
+      }
+    }).catch(function() {
+      App.hideLoading();
+      App.showToast('取込に失敗しました', 'error');
+    });
+  },
+  loadList: function() {
+    var ym = document.getElementById('payslip-view-month').value;
+    if (!ym) return;
+    var container = document.getElementById('admin-payslip-list');
+    if (!container) return;
+    container.innerHTML = '読み込み中...';
+    API.getStorePayslips(ym).then(function(list) {
+      if (!Array.isArray(list) || list.length === 0) {
+        container.innerHTML = '<p class="text-muted">この月の取込データはありません。</p>';
+        return;
+      }
+      var headerSet = {}; var allKeys = [];
+      for (var i = 0; i < list.length; i++) {
+        var keys = Object.keys(list[i].data || {});
+        for (var k = 0; k < keys.length; k++) {
+          if (!headerSet[keys[k]]) { headerSet[keys[k]] = true; allKeys.push(keys[k]); }
+        }
+      }
+      var html = '<div class="table-wrapper"><table class="data-table"><tr>';
+      for (var hi = 0; hi < allKeys.length; hi++) html += '<th>' + esc(allKeys[hi]) + '</th>';
+      html += '</tr>';
+      for (var ri = 0; ri < list.length; ri++) {
+        html += '<tr>';
+        for (var ci = 0; ci < allKeys.length; ci++) {
+          var v = list[ri].data[allKeys[ci]];
+          html += '<td>' + esc(String(v == null ? '' : v)) + '</td>';
+        }
+        html += '</tr>';
+      }
+      html += '</table></div>';
+      html += '<p class="text-muted text-sm mt-8">' + list.length + '件</p>';
+      container.innerHTML = html;
+    }).catch(function() {
+      container.innerHTML = '<p class="text-muted">取得に失敗しました</p>';
+    });
+  }
+};
+function onShow_admin_payslip() { AdminPayslip.init(); }

@@ -308,14 +308,23 @@ body {
 .store-card .store-card-name { font-size: 16px; font-weight: bold; color: var(--color-main); }
 .store-card .store-card-type { font-size: 12px; color: var(--color-text-light); margin-top: 4px; }
 
-/* ポジショングループヘッダー */
+/* ポジショングループヘッダー（ホール / キッチンを視覚的に強く区切る） */
 .shift-matrix .position-header td {
   background-color: #5D4037;
   color: #FFFFFF;
   font-weight: bold;
-  font-size: 12px;
-  padding: 4px 6px;
+  font-size: 14px;
+  padding: 12px 14px;
   text-align: left;
+  /* 太い境界線で前のセクションとはっきり区切る */
+  border-top: 5px solid #3E2723;
+  border-bottom: 2px solid #3E2723;
+  letter-spacing: 2px;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+}
+/* 最初のpositionヘッダー（ホール）には上に余白を入れない */
+.shift-matrix tr.position-header:first-of-type td {
+  border-top: none;
 }
 
 /* 月間時間セル */
@@ -475,9 +484,11 @@ body {
 
 /* ガントチャートビュー */
 .gantt-container { overflow-x: auto; }
-.gantt-table { border-collapse: collapse; width: 100%; min-width: 900px; }
+.gantt-table { border-collapse: collapse; width: 100%; min-width: 900px; table-layout: fixed; }
 .gantt-table th, .gantt-table td { border: 1px solid #E8E0D8; padding: 0; text-align: center; }
-.gantt-table th { background: #4A3323; color: #fff; font-size: 10px; padding: 4px 0; height: 32px; min-width: 28px; }
+/* 時間ヘッダはラベルを「セル左端＝時刻ライン」に揃える（"22" は 22:00 ラインの真上に表示）*/
+.gantt-table th { background: #4A3323; color: #fff; font-size: 10px; padding: 4px 0 4px 4px; height: 32px; min-width: 28px; width: 28px; text-align: left; }
+.gantt-table th.gantt-name-col { text-align: left; padding-left: 8px; }
 .gantt-table th.gantt-name-col { min-width: 100px; width: 100px; position: sticky; left: 0; z-index: 2; }
 .gantt-name-cell { min-width: 100px; width: 100px; text-align: left; padding: 2px 6px; font-size: 11px; font-weight: bold; color: #4A3323; background: #F5F5F5; position: sticky; left: 0; z-index: 1; white-space: nowrap; }
 .gantt-name-cell .emp-badge { display: inline-block; font-size: 9px; padding: 1px 4px; border-radius: 3px; margin-left: 2px; }
@@ -489,12 +500,119 @@ body {
 .gantt-bar.hall { background: #43A047; }
 .gantt-bar.kitchen { background: #1E88E5; }
 .gantt-bar:hover { opacity: 0.85; box-shadow: 0 2px 6px rgba(0,0,0,0.3); }
+/* 労基法違反のバーは赤い縁取りで強調 */
+.gantt-bar.labor-violation { border: 2px solid #C62828; box-shadow: 0 0 0 1px rgba(255,255,255,0.5) inset; }
+/* 休憩マーカー（バー上に白い帯で休憩時間を表示） - 旧版 */
+.gantt-bar .break-marker {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(255,255,255,0.85);
+  color: #5D4037;
+  font-size: 10px;
+  font-weight: bold;
+  padding: 2px 6px;
+  border-radius: 8px;
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 1;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+}
+/* 休憩ゾーン（バー内の休憩時間帯を薄黄色の四角で視覚区切り） */
+.gantt-bar .break-zone {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  background: #FFE082;
+  border-left: 2px solid #FBC02D;
+  border-right: 2px solid #FBC02D;
+  color: #5D4037;
+  font-size: 9px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 2;
+  border-radius: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+/* バーラベル（勤務時間） */
+.gantt-bar .bar-label {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 9px;
+  font-weight: bold;
+  color: #fff;
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 1;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+}
+/* 凡例（ガントチャート上部に表示） */
+.gantt-legend {
+  display: flex;
+  gap: 16px;
+  padding: 8px 12px;
+  background: #FFF8E1;
+  border-radius: 8px;
+  border: 1px solid #FFE082;
+  font-size: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.gantt-legend .legend-item { display: inline-flex; align-items: center; gap: 6px; }
+.gantt-legend .legend-swatch { display: inline-block; width: 18px; height: 14px; border-radius: 3px; }
+/* 労基法違反バッジ */
+.gantt-bar .violation-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  background: #C62828;
+  color: #fff;
+  font-size: 10px;
+  font-weight: bold;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+/* 5-2 連勤バッジ */
+.consecutive-badge { font-size: 9px; font-weight: bold; display: inline-block; margin-top: 2px; line-height: 1.1; }
+/* 編集モーダルの労基法アラート */
+.labor-law-alert {
+  margin-top: 6px;
+  padding: 6px 8px;
+  background: #FFF3E0;
+  border-left: 3px solid #E65100;
+  border-radius: 4px;
+  font-size: 11px;
+  color: #5D4037;
+  text-align: left;
+}
 .gantt-bar .bar-handle { position: absolute; top: 0; width: 8px; height: 100%; cursor: col-resize; z-index: 2; }
 .gantt-bar .bar-handle.left { left: 0; border-radius: 4px 0 0 4px; }
 .gantt-bar .bar-handle.right { right: 0; border-radius: 0 4px 4px 0; }
 .gantt-bar .bar-handle:hover { background: rgba(255,255,255,0.4); }
 .gantt-hour-line { position: absolute; top: 0; bottom: 0; width: 1px; background: #E0D8D0; pointer-events: none; z-index: 0; }
-.gantt-position-header td { background: #8D6E63; color: #fff; font-weight: bold; font-size: 12px; padding: 6px; text-align: left; }
+.gantt-position-header td { background: #8D6E63; color: #fff; font-weight: bold; font-size: 14px; padding: 12px 14px; text-align: left; border-top: 5px solid #3E2723; border-bottom: 2px solid #3E2723; letter-spacing: 2px; text-shadow: 0 1px 2px rgba(0,0,0,0.4); }
+.gantt-position-header:first-of-type td { border-top: none; }
+/* ホール／キッチン間の空行（明確な視覚的区切り） */
+.gantt-position-spacer td { height: 16px; background: #FAF6F0; border-left: none; border-right: none; padding: 0; }
+/* シフト表マトリックスの空行も同様に */
+.shift-matrix tr.position-spacer td { height: 14px; background: #FAF6F0; border-left: none; border-right: none; padding: 0; }
+/* 祝日表示（calendar.js で .holiday クラス付与） */
+.calendar-cell.holiday .day-number { color: var(--color-accent); font-weight: bold; }
+.calendar-cell .holiday-name { font-size: 9px; color: var(--color-accent); margin-top: 2px; line-height: 1.1; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .gantt-summary-row td { background: #FFF8E1; font-size: 11px; font-weight: bold; padding: 4px 0; }
 .gantt-summary-row .shortage { background: #FFCDD2; color: #C62828; }
 .gantt-summary-row .ok { background: #E8F5E9; color: #2E7D32; }

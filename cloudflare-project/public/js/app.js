@@ -11,7 +11,7 @@ var App = {
   init: function(mode) {
     this.mode = mode;
 
-    // URLから店舗コードを取得（例: /URESHINO/ や ?store=URESHINO）
+    // URLまたはデプロイ環境変数から店舗コードを取得
     var storeCode = this.getStoreCode();
     if (storeCode) {
       API.setStoreCode(storeCode);
@@ -28,14 +28,21 @@ var App = {
       this.showScreen('admin-login');
     } else if (mode === 'staff') {
       this.showScreen('staff-select');
+    } else if (storeCode) {
+      // 店舗別デプロイ：店舗選択をスキップしてモード選択画面へ
+      this.showScreen('mode-select');
     } else {
       // 店舗選択画面
       this.showScreen('store-select');
     }
   },
 
-  // URLから店舗コードを取得する
+  // URLまたはデプロイ環境変数から店舗コードを取得する
   getStoreCode: function() {
+    // 店舗別デプロイ用：/api/config 経由でセットされた値
+    if (window.__GYUUMARU_STORE_CODE__) {
+      return window.__GYUUMARU_STORE_CODE__;
+    }
     // URLパス形式: /URESHINO/staff, /URESHINO/admin
     var path = location.pathname.split('/').filter(function(p) { return p; });
     if (path.length >= 1 && path[0] !== 'index.html') {
@@ -105,7 +112,11 @@ var App = {
         case 'shift-request':
         case 'shift-request-view':
         case 'shift-view':
+        case 'staff-payslip-list':
           this.showScreen('staff-menu');
+          break;
+        case 'staff-payslip-detail':
+          this.showScreen('staff-payslip-list');
           break;
         default:
           this.showScreen('staff-select');
@@ -123,6 +134,7 @@ var App = {
         case 'admin-staff-manage':
         case 'admin-labor-cost':
         case 'admin-store-settings':
+        case 'admin-payslip':
           this.showScreen('admin-dashboard');
           break;
         default:

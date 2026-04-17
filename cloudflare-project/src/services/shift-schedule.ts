@@ -5,6 +5,7 @@ import type { DB } from '../db/supabase';
 import { getCurrentStoreInfo } from './auth';
 import { REQUEST_TYPES, SHIFT_STATUS, SHIFT_CREATION, TIME_CONFIG, POSITIONS } from '../config';
 import { getAllDatesInMonth, timeToMinutes, calcHoursDiff, addDays, getMonday, getDayOfWeek } from '../utils';
+import { isWeekendOrHoliday } from '../holidays';
 import type { ShiftSchedule, StaffData, ApiResult, TimeSlotStaffing } from '../types';
 
 // シフト表を自動作成する（時間帯別必要人数対応版）
@@ -118,8 +119,8 @@ export async function generateAutoShift(db: DB, storeId: number, yearMonth: stri
     let count = 0;
     const shifts = staffShiftMap[staffId] || {};
     for (const d of Object.keys(shifts)) {
-      const dow = new Date(d).getDay();
-      if (dow === 0 || dow === 6) count++;
+      // 祝日も土日扱いでカウント
+      if (isWeekendOrHoliday(d)) count++;
     }
     return count;
   }
@@ -147,12 +148,11 @@ export async function generateAutoShift(db: DB, storeId: number, yearMonth: stri
   const slotShortages: SlotShortage[] = [];
 
   for (const date of dates) {
-    const dateObj = new Date(date);
-    const dayOfWeekNum = dateObj.getDay();
-    const isWeekend = (dayOfWeekNum === 0 || dayOfWeekNum === 6);
+    // 祝日も土日扱いで必要人数を切り替え
+    const isWeekend = isWeekendOrHoliday(date);
 
     for (const slot of timeSlots) {
-      // 平日/土日で必要人数を切り替え
+      // 平日/土日祝で必要人数を切り替え
       const hallNeeded = isWeekend
         ? (slot.weekendHall ?? slot.hall ?? 4)
         : (slot.weekdayHall ?? slot.hall ?? 4);
@@ -201,8 +201,8 @@ export async function generateAutoShift(db: DB, storeId: number, yearMonth: stri
     const need = shortage.needed - currentCount;
     if (need <= 0) continue;
 
-    const shortageDow = new Date(shortage.date).getDay();
-    const isShortageWeekend = (shortageDow === 0 || shortageDow === 6);
+    // 祝日も土日扱いで判定
+    const isShortageWeekend = isWeekendOrHoliday(shortage.date);
 
     const candidates: Array<{ staffId: string; score: number }> = [];
 
@@ -301,8 +301,8 @@ export async function resolveSurplus(db: DB, storeId: number, yearMonth: string)
     let changedThisPass = 0;
 
     for (const date of dates) {
-      const dateObj = new Date(date);
-      const isWeekend = (dateObj.getDay() === 0 || dateObj.getDay() === 6);
+      // 祝日も土日扱いで判定
+      const isWeekend = isWeekendOrHoliday(date);
       const dayShifts = schedules.filter(s => s.date === date);
 
       for (const slot of timeSlots) {
@@ -410,9 +410,8 @@ export async function generateShortageText(db: DB, storeId: number, yearMonth: s
   const shortageLines: string[] = [];
 
   for (const date of dates) {
-    const dateObj = new Date(date);
-    const dayOfWeekNum = dateObj.getDay();
-    const isWeekend = (dayOfWeekNum === 0 || dayOfWeekNum === 6);
+    // 祝日も土日扱いで判定
+    const isWeekend = isWeekendOrHoliday(date);
 
     for (const slot of timeSlots) {
       const hallNeeded = isWeekend ? (slot.weekendHall ?? slot.hall ?? 4) : (slot.weekdayHall ?? slot.hall ?? 4);
