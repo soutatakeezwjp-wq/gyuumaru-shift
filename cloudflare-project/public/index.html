@@ -449,8 +449,10 @@
             <div class="step-hero-desc">時間帯ごとにホール・キッチンの人数が足りているか確認しましょう</div>
           </div>
           <div id="ase-shortage-summary" class="mb-16"></div>
-          <div class="flex gap-8 mb-16" style="justify-content:center">
+          <div class="flex gap-8 mb-16" style="justify-content:center;flex-wrap:wrap">
             <button class="btn btn-outline btn-sm" onclick="AdminShiftEdit.generateShortageText()">不足文面を生成（コピー用）</button>
+            <button class="btn btn-outline btn-sm" onclick="AdminHelpCampaign.openManager()" style="background:#BE2828;color:#fff;border-color:#BE2828">📣 ヘルプ募集URLを管理</button>
+            <button class="btn btn-outline btn-sm" onclick="AdminHelpCampaign.openApplications()">応募を確認（<span id="ahc-pending-count">0</span>件）</button>
             <button class="btn btn-outline btn-sm" onclick="AdminShiftEdit.exportExcel()" style="background:#217346;color:#fff;border-color:#217346">Excel出力</button>
           </div>
           <div class="step-action">
@@ -504,6 +506,70 @@
         <div class="modal-header"><span class="modal-title">LINE配信用 不足文面</span><button class="modal-close" onclick="App.hideModal('ase-shortage-modal')">&#10005;</button></div>
         <textarea id="ase-shortage-text" class="form-textarea" style="height:300px;font-size:13px" readonly></textarea>
         <button class="btn btn-primary btn-block mt-16" onclick="AdminShiftEdit.copyShortageText()">コピーする</button>
+      </div>
+    </div>
+
+    <!-- ヘルプ募集URL管理モーダル -->
+    <div id="ahc-manager-modal" class="modal-overlay" onclick="if(event.target===this)App.hideModal('ahc-manager-modal')">
+      <div class="modal-content" style="max-width:680px">
+        <div class="modal-header">
+          <span class="modal-title">📣 ヘルプ募集URL</span>
+          <button class="modal-close" onclick="App.hideModal('ahc-manager-modal')">&#10005;</button>
+        </div>
+        <div style="background:#FFF8E1;border-left:4px solid #BE2828;padding:10px 12px;border-radius:8px;font-size:13px;margin-bottom:14px">
+          スタッフ向けに「不足日カレンダー」付きの専用URLを発行できます。URLを開いたスタッフは不足日を見て、そのまま応募できます。
+        </div>
+
+        <h4 style="margin-bottom:8px">新しく発行する</h4>
+        <div class="form-group">
+          <label class="form-label">案内文（LINEに貼る本文）</label>
+          <textarea id="ahc-new-message" class="form-textarea" style="height:120px;font-size:13px" placeholder="ここに『不足文面を生成』で作った本文をそのまま貼り付けてください"></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">有効期限（任意）</label>
+          <input type="date" id="ahc-new-expires" class="form-input">
+        </div>
+        <button class="btn btn-primary btn-block" onclick="AdminHelpCampaign.createNew()">この月のヘルプ募集URLを発行</button>
+
+        <h4 style="margin:20px 0 8px">発行済みURL</h4>
+        <div id="ahc-list" style="font-size:13px">
+          <div class="text-muted text-center" style="padding:20px 0">読み込み中...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 発行後の共有モーダル -->
+    <div id="ahc-share-modal" class="modal-overlay" onclick="if(event.target===this)App.hideModal('ahc-share-modal')">
+      <div class="modal-content" style="max-width:580px">
+        <div class="modal-header">
+          <span class="modal-title">🎉 URLが発行されました</span>
+          <button class="modal-close" onclick="App.hideModal('ahc-share-modal')">&#10005;</button>
+        </div>
+        <p class="text-muted text-sm mb-8">下のテキストをそのままLINEグループに貼り付けてください。</p>
+        <textarea id="ahc-share-text" class="form-textarea" style="height:260px;font-size:13px" readonly></textarea>
+        <div class="flex gap-8 mt-16">
+          <button class="btn btn-primary" style="flex:1" onclick="AdminHelpCampaign.copyShare()">まとめてコピー</button>
+          <button class="btn btn-outline" style="flex:1" onclick="AdminHelpCampaign.copyUrlOnly()">URLだけコピー</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 応募一覧モーダル -->
+    <div id="ahc-apps-modal" class="modal-overlay" onclick="if(event.target===this)App.hideModal('ahc-apps-modal')">
+      <div class="modal-content" style="max-width:720px">
+        <div class="modal-header">
+          <span class="modal-title">応募一覧</span>
+          <button class="modal-close" onclick="App.hideModal('ahc-apps-modal')">&#10005;</button>
+        </div>
+        <div class="flex gap-8 mb-16">
+          <button class="btn btn-outline btn-sm" onclick="AdminHelpCampaign.switchAppsFilter('申請中')" id="ahc-tab-pending" style="background:#BE2828;color:#fff;border-color:#BE2828">申請中</button>
+          <button class="btn btn-outline btn-sm" onclick="AdminHelpCampaign.switchAppsFilter('承認')" id="ahc-tab-approved">承認済み</button>
+          <button class="btn btn-outline btn-sm" onclick="AdminHelpCampaign.switchAppsFilter('却下')" id="ahc-tab-rejected">却下</button>
+          <button class="btn btn-outline btn-sm" onclick="AdminHelpCampaign.switchAppsFilter('')" id="ahc-tab-all">すべて</button>
+        </div>
+        <div id="ahc-apps-list">
+          <div class="text-muted text-center" style="padding:20px 0">読み込み中...</div>
+        </div>
       </div>
     </div>
   </div>

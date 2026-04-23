@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>ヘルプ募集 | ぎゅう丸シフト</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    /* ========== ヘルプ募集ページ専用 ========== */
+    .help-wrap {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 16px;
+    }
+    .help-hero {
+      background: linear-gradient(135deg, #4A3323 0%, #6B4A33 100%);
+      color: #fff;
+      border-radius: var(--radius-lg);
+      padding: 20px 24px;
+      box-shadow: var(--shadow-md);
+      margin-bottom: 16px;
+    }
+    .help-hero h1 {
+      font-size: 1.25rem;
+      margin-bottom: 4px;
+    }
+    .help-hero p {
+      opacity: 0.92;
+      font-size: 0.92rem;
+    }
+    .help-msg {
+      background: #FFF8E1;
+      border-left: 4px solid #BE2828;
+      padding: 12px 14px;
+      border-radius: var(--radius-sm);
+      font-size: 0.92rem;
+      white-space: pre-wrap;
+      margin-bottom: 16px;
+    }
+
+    /* カレンダー */
+    .cal-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .cal-nav-title { font-weight: 700; font-size: 1.05rem; }
+
+    .cal-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 4px;
+      background: var(--color-white);
+      padding: 10px;
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-sm);
+    }
+    .cal-head {
+      text-align: center;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--color-text-light);
+      padding: 6px 0;
+    }
+    .cal-head.sun { color: #BE2828; }
+    .cal-head.sat { color: #2B6BBA; }
+
+    .cal-cell {
+      aspect-ratio: 1 / 1;
+      border-radius: var(--radius-sm);
+      padding: 4px 6px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      background: #fafafa;
+      font-size: 0.85rem;
+      position: relative;
+      border: 1px solid transparent;
+      cursor: default;
+    }
+    .cal-cell.empty { background: transparent; }
+    .cal-cell.has-shortage {
+      background: #FFEBEE;
+      border-color: #F6A0A0;
+      cursor: pointer;
+    }
+    .cal-cell.has-shortage:active {
+      transform: scale(0.97);
+    }
+    .cal-cell .cal-day { font-weight: 700; }
+    .cal-cell .cal-day.sun { color: #BE2828; }
+    .cal-cell .cal-day.sat { color: #2B6BBA; }
+    .cal-cell .cal-badge {
+      font-size: 0.68rem;
+      background: #BE2828;
+      color: #fff;
+      border-radius: 999px;
+      padding: 1px 6px;
+      align-self: flex-end;
+      white-space: nowrap;
+    }
+
+    /* 凡例 */
+    .legend {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      margin: 12px 0;
+      font-size: 0.82rem;
+      color: var(--color-text-light);
+    }
+    .legend .swatch {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border-radius: 4px;
+      vertical-align: middle;
+      margin-right: 4px;
+    }
+    .legend .swatch.red { background: #FFEBEE; border: 1px solid #F6A0A0; }
+    .legend .swatch.grey { background: #fafafa; border: 1px solid #eee; }
+
+    /* 詳細モーダル */
+    .help-modal {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.5);
+      display: none;
+      align-items: flex-end;
+      z-index: 100;
+    }
+    .help-modal.show { display: flex; }
+    .help-modal-body {
+      width: 100%;
+      max-width: 640px;
+      margin: 0 auto;
+      background: #fff;
+      border-radius: 20px 20px 0 0;
+      padding: 20px;
+      max-height: 88vh;
+      overflow-y: auto;
+    }
+    @media (min-width: 641px) {
+      .help-modal { align-items: center; }
+      .help-modal-body { border-radius: 20px; }
+    }
+    .help-modal h2 {
+      font-size: 1.05rem;
+      margin-bottom: 12px;
+    }
+    .slot-row {
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      margin-bottom: 10px;
+      background: #fff;
+    }
+    .slot-row.selected {
+      border-color: #BE2828;
+      background: #FFF5F5;
+    }
+    .slot-title {
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    .slot-meta {
+      font-size: 0.85rem;
+      color: var(--color-text-light);
+    }
+
+    .btn-apply {
+      background: #BE2828;
+      color: #fff;
+      border: none;
+      padding: 12px 20px;
+      border-radius: 999px;
+      font-size: 1rem;
+      font-weight: 700;
+      width: 100%;
+      cursor: pointer;
+    }
+    .btn-apply:disabled { background: #ddd; color: #999; cursor: default; }
+    .btn-secondary {
+      background: #f3efe8;
+      color: var(--color-main);
+      border: none;
+      padding: 10px 18px;
+      border-radius: 999px;
+      cursor: pointer;
+    }
+    .form-ctrl {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      font-size: 1rem;
+      background: #fff;
+    }
+    .form-lbl {
+      display: block;
+      font-size: 0.85rem;
+      margin-bottom: 4px;
+      color: var(--color-text-light);
+    }
+    .toast {
+      position: fixed;
+      left: 50%; bottom: 30px; transform: translateX(-50%);
+      background: #333; color: #fff;
+      padding: 10px 18px;
+      border-radius: 999px;
+      font-size: 0.9rem;
+      z-index: 300;
+      box-shadow: var(--shadow-md);
+      display: none;
+    }
+    .toast.show { display: block; }
+    .toast.err { background: #BE2828; }
+
+    .loading-center {
+      text-align: center;
+      color: var(--color-text-light);
+      padding: 40px 0;
+    }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div class="help-wrap">
+    <!-- ヘッダー -->
+    <div class="help-hero">
+      <h1 id="help-title">読み込み中...</h1>
+      <p id="help-subtitle"></p>
+    </div>
+
+    <div id="help-message" class="help-msg hidden"></div>
+
+    <!-- カレンダー -->
+    <div id="help-cal-wrap">
+      <div class="cal-nav">
+        <div class="cal-nav-title" id="cal-title"></div>
+      </div>
+      <div class="cal-grid" id="cal-grid">
+        <div class="cal-head sun">日</div>
+        <div class="cal-head">月</div>
+        <div class="cal-head">火</div>
+        <div class="cal-head">水</div>
+        <div class="cal-head">木</div>
+        <div class="cal-head">金</div>
+        <div class="cal-head sat">土</div>
+      </div>
+      <div class="legend">
+        <span><span class="swatch red"></span>不足している日</span>
+        <span><span class="swatch grey"></span>足りてる / 対象外</span>
+      </div>
+    </div>
+
+    <div id="help-loading" class="loading-center">読み込み中...</div>
+    <div id="help-error" class="loading-center hidden"></div>
+  </div>
+
+  <!-- 詳細モーダル -->
+  <div class="help-modal" id="help-modal">
+    <div class="help-modal-body">
+      <h2 id="mod-title"></h2>
+      <p class="slot-meta" id="mod-sub" style="margin-bottom:12px"></p>
+
+      <div id="mod-slots"></div>
+
+      <!-- 応募フォーム -->
+      <div id="mod-form" class="hidden" style="margin-top:14px">
+        <div style="margin-bottom:10px">
+          <label class="form-lbl">あなたのお名前を選んでください</label>
+          <select id="mod-staff" class="form-ctrl"></select>
+        </div>
+        <div style="margin-bottom:10px">
+          <label class="form-lbl">4桁のPIN（本人確認）</label>
+          <input type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4"
+                 id="mod-pin" class="form-ctrl" placeholder="••••"
+                 autocomplete="off"
+                 style="font-size:1.4rem;letter-spacing:0.4rem;text-align:center">
+          <p class="text-muted text-sm" style="margin-top:4px;font-size:0.75rem;color:#8B7B6B">
+            ※PINはスタッフログインで使っているものと同じです。忘れた方は店長にリセットをお願いしてください。
+          </p>
+        </div>
+        <div style="margin-bottom:14px">
+          <label class="form-lbl">ひとこと（任意）</label>
+          <input type="text" id="mod-note" class="form-ctrl" placeholder="よろしくお願いします">
+        </div>
+        <button class="btn-apply" id="mod-apply" onclick="HelpPage.submit()">この時間で応募する</button>
+      </div>
+
+      <div style="text-align:center; margin-top:12px">
+        <button class="btn-secondary" onclick="HelpPage.closeModal()">閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    // URLパラメータからトークンを取得
+    const params = new URLSearchParams(location.search);
+    const TOKEN = params.get('t') || location.pathname.split('/').filter(Boolean).pop();
+
+    const HelpPage = (function() {
+      let campaign = null;
+      let shortages = [];       // ShortageSlot[]
+      let staffList = [];       // {id, name, kana, position}
+      let selectedDate = null;  // 'YYYY-MM-DD'
+      let selectedSlot = null;  // ShortageSlot
+
+      function showToast(msg, isErr) {
+        const el = document.getElementById('toast');
+        el.textContent = msg;
+        el.className = 'toast show' + (isErr ? ' err' : '');
+        setTimeout(() => { el.className = 'toast'; }, 2600);
+      }
+
+      async function api(path) {
+        const r = await fetch(path);
+        if (!r.ok && r.status !== 200) {
+          const j = await r.json().catch(() => ({}));
+          throw new Error(j.message || 'リクエストに失敗しました');
+        }
+        return r.json();
+      }
+
+      async function init() {
+        if (!TOKEN || TOKEN === 'help.html') {
+          showError('URLが無効です');
+          return;
+        }
+        try {
+          const info = await api('/api/help/' + encodeURIComponent(TOKEN));
+          if (!info.success) throw new Error(info.message);
+          campaign = info.campaign;
+          renderHeader(campaign);
+
+          const [shortageRes, staffRes] = await Promise.all([
+            api('/api/help/' + encodeURIComponent(TOKEN) + '/shortages'),
+            api('/api/help/' + encodeURIComponent(TOKEN) + '/staff'),
+          ]);
+          shortages = shortageRes.shortages || [];
+          staffList = staffRes.staff || [];
+
+          renderCalendar(campaign.yearMonth, shortages);
+          document.getElementById('help-loading').classList.add('hidden');
+        } catch (e) {
+          showError(e.message || '取得に失敗しました');
+        }
+      }
+
+      function showError(msg) {
+        document.getElementById('help-loading').classList.add('hidden');
+        const el = document.getElementById('help-error');
+        el.textContent = msg;
+        el.classList.remove('hidden');
+        document.getElementById('help-cal-wrap').classList.add('hidden');
+      }
+
+      function renderHeader(c) {
+        const [y, m] = c.yearMonth.split('-');
+        document.getElementById('help-title').textContent = c.storeName + ' ' + parseInt(m) + '月 ' + c.title;
+        document.getElementById('help-subtitle').textContent = '気になる日をタップすると応募できます';
+        if (c.message) {
+          const msgEl = document.getElementById('help-message');
+          msgEl.textContent = c.message;
+          msgEl.classList.remove('hidden');
+        }
+        document.getElementById('cal-title').textContent = y + '年' + parseInt(m) + '月';
+      }
+
+      function renderCalendar(yearMonth, shortages) {
+        const [y, m] = yearMonth.split('-').map(Number);
+        const firstDow = new Date(y, m - 1, 1).getDay();
+        const daysInMonth = new Date(y, m, 0).getDate();
+
+        // 日付ごとの不足集計
+        const byDate = {};
+        for (const s of shortages) {
+          if (!byDate[s.date]) byDate[s.date] = [];
+          byDate[s.date].push(s);
+        }
+
+        // 既存セル削除（ヘッダー7つ以外）
+        const grid = document.getElementById('cal-grid');
+        const keep = Array.from(grid.querySelectorAll('.cal-head'));
+        grid.innerHTML = '';
+        for (const h of keep) grid.appendChild(h);
+
+        // 空白セル
+        for (let i = 0; i < firstDow; i++) {
+          const empty = document.createElement('div');
+          empty.className = 'cal-cell empty';
+          grid.appendChild(empty);
+        }
+
+        // 日付セル
+        for (let d = 1; d <= daysInMonth; d++) {
+          const dateStr = yearMonth + '-' + String(d).padStart(2, '0');
+          const dow = new Date(y, m - 1, d).getDay();
+          const slots = byDate[dateStr] || [];
+          const totalShortage = slots.reduce((sum, s) => sum + (s.shortage || 0), 0);
+
+          const cell = document.createElement('div');
+          cell.className = 'cal-cell' + (slots.length > 0 ? ' has-shortage' : '');
+
+          const dayEl = document.createElement('div');
+          dayEl.className = 'cal-day' + (dow === 0 ? ' sun' : dow === 6 ? ' sat' : '');
+          dayEl.textContent = d;
+          cell.appendChild(dayEl);
+
+          if (slots.length > 0) {
+            const badge = document.createElement('div');
+            badge.className = 'cal-badge';
+            badge.textContent = '-' + totalShortage + '名';
+            cell.appendChild(badge);
+            cell.addEventListener('click', () => openDetail(dateStr, slots));
+          }
+
+          grid.appendChild(cell);
+        }
+      }
+
+      function openDetail(date, slots) {
+        selectedDate = date;
+        selectedSlot = null;
+
+        const [y, m, d] = date.split('-');
+        const dowStr = slots[0] ? slots[0].dayOfWeek : '';
+        document.getElementById('mod-title').textContent = parseInt(m) + '月' + parseInt(d) + '日(' + dowStr + ')';
+        document.getElementById('mod-sub').textContent = '以下の時間帯が不足しています。入れる時間を選んでください。';
+
+        // スロット描画
+        const slotsEl = document.getElementById('mod-slots');
+        slotsEl.innerHTML = '';
+        for (const s of slots) {
+          const row = document.createElement('div');
+          row.className = 'slot-row';
+          row.innerHTML =
+            '<div class="slot-title">' + s.slotStart + '〜' + s.slotEnd +
+            ' <span style="color:#BE2828">' + s.position + ' ' + s.shortage + '名不足</span></div>' +
+            '<div class="slot-meta">' + (s.label || '') +
+            '  |  現在 ' + s.current + '/' + s.needed + '名</div>';
+          row.addEventListener('click', () => selectSlot(row, s));
+          slotsEl.appendChild(row);
+        }
+
+        // フォームリセット
+        document.getElementById('mod-form').classList.add('hidden');
+        document.getElementById('mod-pin').value = '';
+        document.getElementById('mod-note').value = '';
+
+        // スタッフセレクト構築
+        const sel = document.getElementById('mod-staff');
+        sel.innerHTML = '<option value="">-- 選択してください --</option>';
+        for (const s of staffList) {
+          const opt = document.createElement('option');
+          opt.value = s.id;
+          opt.textContent = s.name + (s.position ? ' (' + s.position + ')' : '');
+          sel.appendChild(opt);
+        }
+
+        document.getElementById('help-modal').classList.add('show');
+      }
+
+      function selectSlot(rowEl, slot) {
+        selectedSlot = slot;
+        // 選択スタイル
+        document.querySelectorAll('.slot-row').forEach((r) => r.classList.remove('selected'));
+        rowEl.classList.add('selected');
+        // フォームを出す
+        document.getElementById('mod-form').classList.remove('hidden');
+      }
+
+      function closeModal() {
+        document.getElementById('help-modal').classList.remove('show');
+      }
+
+      async function submit() {
+        if (!selectedSlot) {
+          showToast('応募する時間帯を選んでください', true);
+          return;
+        }
+        const staffId = document.getElementById('mod-staff').value;
+        const pin = document.getElementById('mod-pin').value.trim();
+        const note = document.getElementById('mod-note').value.trim();
+        if (!staffId) return showToast('お名前を選んでください', true);
+        if (!/^\d{4}$/.test(pin)) return showToast('4桁のPINを入力してください', true);
+
+        const btn = document.getElementById('mod-apply');
+        btn.disabled = true;
+        btn.textContent = '送信中...';
+        try {
+          const r = await fetch('/api/help/' + encodeURIComponent(TOKEN) + '/apply', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              staffId,
+              pin: pin,
+              date: selectedDate,
+              startTime: selectedSlot.slotStart,
+              endTime: selectedSlot.slotEnd,
+              note,
+            }),
+          });
+          const j = await r.json();
+          if (!j.success) {
+            showToast(j.message || '応募に失敗しました', true);
+            btn.disabled = false;
+            btn.textContent = 'この時間で応募する';
+            return;
+          }
+          showToast('応募を受け付けました！');
+          closeModal();
+          // 再取得（他の人の応募が承認されていたら不足が減ることがある）
+          const shortageRes = await (await fetch('/api/help/' + encodeURIComponent(TOKEN) + '/shortages')).json();
+          shortages = shortageRes.shortages || [];
+          renderCalendar(campaign.yearMonth, shortages);
+        } catch (e) {
+          showToast('通信エラー: ' + e.message, true);
+          btn.disabled = false;
+          btn.textContent = 'この時間で応募する';
+        }
+      }
+
+      return { init, closeModal, submit };
+    })();
+
+    HelpPage.init();
+  </script>
+</body>
+</html>

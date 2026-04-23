@@ -513,6 +513,8 @@ var AdminShiftEdit = {
     Calendar.renderHeader('ase-month-header', this.yearMonth, function(newYM) { self.yearMonth = newYM; self.weekOffset = 0; self.load(); });
     // loadがStep1も描画するので、loadだけ呼ぶ
     this.load();
+    // 応募件数バッジを更新
+    if (typeof AdminHelpCampaign !== 'undefined') AdminHelpCampaign.refreshPendingCount();
   },
 
   // ステップ型ワークフロー（4ステップ）
@@ -3203,3 +3205,255 @@ var AdminPayslip = {
   }
 };
 function onShow_admin_payslip() { AdminPayslip.init(); }
+
+// =====================================================================
+// ヘルプ募集URL 管理モジュール
+// =====================================================================
+var AdminHelpCampaign = {
+  currentCampaigns: [],
+  currentApps: [],
+  currentFilter: '申請中',
+  lastCreated: null, // 発行直後のキャンペーン（共有モーダル用）
+
+  // 応募件数バッジを更新（Step3のボタンに「○件」を表示）
+  refreshPendingCount: function() {
+    API.listHelpApplications({ status: '申請中' }).then(function(list) {
+      var el = document.getElementById('ahc-pending-count');
+      if (el) el.textContent = (list || []).length;
+    }).catch(function() { /* 無視 */ });
+  },
+
+  // 管理モーダルを開く
+  openManager: function() {
+    // 案内文のプレースホルダーを空に（前回の値が残らないよう）
+    document.getElementById('ahc-new-message').value = '';
+    document.getElementById('ahc-new-expires').value = '';
+    App.showModal('ahc-manager-modal');
+    this.loadList();
+  },
+
+  // 一覧を再読込
+  loadList: function() {
+    var self = this;
+    var box = document.getElementById('ahc-list');
+    box.innerHTML = '<div class="text-muted text-center" style="padding:20px 0">読み込み中...</div>';
+    API.listHelpCampaigns().then(function(list) {
+      self.currentCampaigns = list || [];
+      var yearMonth = AdminShiftEdit.yearMonth;
+      var filtered = self.currentCampaigns.filter(function(c) { return c.yearMonth === yearMonth; });
+      if (filtered.length === 0) {
+        box.innerHTML = '<p class="text-muted">この月のURLはまだ発行されていません</p>';
+        return;
+      }
+      var html = '';
+      for (var i = 0; i < filtered.length; i++) {
+        var c = filtered[i];
+        var url = location.origin + '/help.html?t=' + c.id;
+        var status = c.isActive ? '<span style="color:#2E7D32;font-weight:600">有効</span>' : '<span style="color:#999">停止中</span>';
+        html += '<div style="border:1px solid var(--color-border);border-radius:10px;padding:10px 12px;margin-bottom:10px">';
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
+        html += '<span>' + status + ' <span class="text-muted text-sm">' + (c.createdAt || '').substring(0,16).replace('T',' ') + '</span></span>';
+        if (c.isActive) {
+          html += '<button class="btn btn-outline btn-sm" onclick="AdminHelpCampaign.deactivate(\'' + c.id + '\')">停止</button>';
+        }
+        html += '</div>';
+        html += '<div style="font-size:12px;color:#666;word-break:break-all;background:#f7f4ef;padding:6px 8px;border-radius:6px;margin-bottom:6px">' + url + '</div>';
+        html += '<div class="flex gap-8">';
+        html += '<button class="btn btn-outline btn-sm" style="flex:1" onclick="AdminHelpCampaign.copyUrl(\'' + c.id + '\')">URLをコピー</button>';
+        html += '<button class="btn btn-outline btn-sm" style="flex:1" onclick="AdminHelpCampaign.reshare(\'' + c.id + '\')">LINE用テキストを表示</button>';
+        html += '</div>';
+        html += '</div>';
+      }
+      box.innerHTML = html;
+    }).catch(function() {
+      box.innerHTML = '<p class="text-muted">取得に失敗しました</p>';
+    });
+  },
+
+  // 新規作成
+  createNew: function() {
+    var yearMonth = AdminShiftEdit.yearMonth;
+    var message = document.getElementById('ahc-new-message').value.trim();
+    var expiresInput = document.getElementById('ahc-new-expires').value;
+    var expiresAt = expiresInput ? new Date(expiresInput + 'T23:59:59').toISOString() : null;
+
+    App.showLoading('発行中...');
+    var self = this;
+    API.createHelpCampaign(yearMonth, 'ヘルプ募集', message, expiresAt).then(function(result) {
+      App.hideLoading();
+      if (!result.success) {
+        App.showToast(result.message || '発行に失敗しました', 'error');
+        return;
+      }
+      self.lastCreated = result.campaign;
+      self.loadList();
+      self.showShareModal(result.campaign, message);
+    }).catch(function() {
+      App.hideLoading();
+      App.showToast('発行に失敗しました', 'error');
+    });
+  },
+
+  // 共有モーダル表示
+  showShareModal: function(campaign, customMessage) {
+    var url = location.origin + '/help.html?t=' + campaign.id;
+    var body = '';
+    if (customMessage) body = customMessage + '\n\n';
+    body += '▼ 入れる方はこちらから応募してください\n' + url;
+    document.getElementById('ahc-share-text').value = body;
+    App.showModal('ahc-share-modal');
+  },
+
+  // 既存キャンペーンのシェアテキストを再表示
+  reshare: function(id) {
+    var c = null;
+    for (var i = 0; i < this.currentCampaigns.length; i++) {
+      if (this.currentCampaigns[i].id === id) { c = this.currentCampaigns[i]; break; }
+    }
+    if (!c) return;
+    this.showShareModal(c, c.message || '');
+  },
+
+  copyShare: function() {
+    var el = document.getElementById('ahc-share-text');
+    navigator.clipboard.writeText(el.value).then(function() {
+      App.showToast('コピーしました', 'success');
+    }).catch(function() { el.select(); document.execCommand('copy'); App.showToast('コピーしました', 'success'); });
+  },
+
+  copyUrlOnly: function() {
+    var body = document.getElementById('ahc-share-text').value;
+    var m = body.match(/https?:\/\/\S+/);
+    if (!m) return;
+    navigator.clipboard.writeText(m[0]).then(function() {
+      App.showToast('URLをコピーしました', 'success');
+    }).catch(function() {});
+  },
+
+  copyUrl: function(id) {
+    var url = location.origin + '/help.html?t=' + id;
+    navigator.clipboard.writeText(url).then(function() {
+      App.showToast('URLをコピーしました', 'success');
+    }).catch(function() {});
+  },
+
+  // キャンペーンを停止
+  deactivate: function(id) {
+    if (!confirm('この募集URLを停止しますか？停止後はスタッフがアクセスできなくなります。')) return;
+    var self = this;
+    App.showLoading('停止中...');
+    API.deactivateHelpCampaign(id).then(function(result) {
+      App.hideLoading();
+      if (!result.success) {
+        App.showToast(result.message || '停止に失敗しました', 'error');
+        return;
+      }
+      App.showToast('停止しました', 'success');
+      self.loadList();
+    }).catch(function() { App.hideLoading(); App.showToast('停止に失敗しました', 'error'); });
+  },
+
+  // 応募一覧モーダルを開く
+  openApplications: function() {
+    this.currentFilter = '申請中';
+    this.updateTabStyle();
+    App.showModal('ahc-apps-modal');
+    this.loadApplications();
+  },
+
+  switchAppsFilter: function(status) {
+    this.currentFilter = status;
+    this.updateTabStyle();
+    this.loadApplications();
+  },
+
+  updateTabStyle: function() {
+    var map = { '申請中': 'ahc-tab-pending', '承認': 'ahc-tab-approved', '却下': 'ahc-tab-rejected', '': 'ahc-tab-all' };
+    for (var k in map) {
+      var el = document.getElementById(map[k]);
+      if (!el) continue;
+      if (k === this.currentFilter) {
+        el.style.background = '#BE2828';
+        el.style.color = '#fff';
+        el.style.borderColor = '#BE2828';
+      } else {
+        el.style.background = '';
+        el.style.color = '';
+        el.style.borderColor = '';
+      }
+    }
+  },
+
+  loadApplications: function() {
+    var box = document.getElementById('ahc-apps-list');
+    box.innerHTML = '<div class="text-muted text-center" style="padding:20px 0">読み込み中...</div>';
+    var params = this.currentFilter ? { status: this.currentFilter } : {};
+    var self = this;
+    API.listHelpApplications(params).then(function(list) {
+      self.currentApps = list || [];
+      if (self.currentApps.length === 0) {
+        box.innerHTML = '<p class="text-muted text-center" style="padding:20px 0">応募はありません</p>';
+        return;
+      }
+      var html = '';
+      for (var i = 0; i < self.currentApps.length; i++) {
+        var a = self.currentApps[i];
+        var statusColor = a.status === '申請中' ? '#BE2828' : a.status === '承認' ? '#2E7D32' : '#999';
+        var appliedAt = (a.appliedAt || '').substring(0,16).replace('T',' ');
+        html += '<div style="border:1px solid var(--color-border);border-radius:10px;padding:12px;margin-bottom:10px">';
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
+        html += '<strong>' + (a.staffName || a.staffId) + '</strong>';
+        html += '<span style="color:' + statusColor + ';font-weight:600">' + a.status + '</span>';
+        html += '</div>';
+        html += '<div style="font-size:13px">' + a.date + ' ' + a.startTime + '〜' + a.endTime;
+        if (a.position) html += ' <span class="text-muted">(' + a.position + ')</span>';
+        html += '</div>';
+        if (a.note) html += '<div class="text-muted text-sm" style="margin-top:4px">💬 ' + a.note + '</div>';
+        html += '<div class="text-muted text-sm">応募: ' + appliedAt + '</div>';
+        if (a.status === '申請中') {
+          html += '<div class="flex gap-8" style="margin-top:8px">';
+          html += '<button class="btn btn-primary btn-sm" style="flex:1" onclick="AdminHelpCampaign.approve(\'' + a.id + '\')">承認（シフトに反映）</button>';
+          html += '<button class="btn btn-outline btn-sm" style="flex:1" onclick="AdminHelpCampaign.reject(\'' + a.id + '\')">却下</button>';
+          html += '</div>';
+        }
+        html += '</div>';
+      }
+      box.innerHTML = html;
+    }).catch(function() { box.innerHTML = '<p class="text-muted">取得に失敗しました</p>'; });
+  },
+
+  approve: function(id) {
+    if (!confirm('この応募を承認して、確定シフトに反映しますか？')) return;
+    var self = this;
+    App.showLoading('反映中...');
+    API.approveHelpApplication(id).then(function(result) {
+      App.hideLoading();
+      if (!result.success) {
+        App.showToast(result.message || '承認に失敗しました', 'error');
+        return;
+      }
+      App.showToast('承認しました', 'success');
+      self.loadApplications();
+      self.refreshPendingCount();
+      // 確定シフト表を再読込（背後のシフト表にも反映されるように）
+      if (typeof AdminShiftEdit !== 'undefined' && AdminShiftEdit.load) AdminShiftEdit.load();
+    }).catch(function() { App.hideLoading(); App.showToast('承認に失敗しました', 'error'); });
+  },
+
+  reject: function(id) {
+    var reason = prompt('却下の理由（任意）を入力してください', '');
+    if (reason === null) return;
+    var self = this;
+    App.showLoading('処理中...');
+    API.rejectHelpApplication(id, reason).then(function(result) {
+      App.hideLoading();
+      if (!result.success) {
+        App.showToast(result.message || '却下に失敗しました', 'error');
+        return;
+      }
+      App.showToast('却下しました', 'success');
+      self.loadApplications();
+      self.refreshPendingCount();
+    }).catch(function() { App.hideLoading(); App.showToast('却下に失敗しました', 'error'); });
+  }
+};

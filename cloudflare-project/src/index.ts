@@ -15,6 +15,7 @@ import * as shiftScheduleService from './services/shift-schedule';
 import * as laborCostService from './services/labor-cost';
 import * as lineNotifyService from './services/line-notify';
 import * as payslipService from './services/payslip';
+import * as helpCampaignService from './services/help-campaign';
 import * as dao from './db/dao';
 
 type Variables = {
@@ -72,6 +73,70 @@ app.get('/api/config', (c) => {
     storeCode: c.env.STORE_CODE || null,
     initialPage: c.env.INITIAL_PAGE || null,
   });
+});
+
+// ========================================
+// 公開: ヘルプ募集URL（トークンベース・認証不要）
+// ========================================
+
+// 募集の公開情報（店舗名・月・案内文）を取得
+app.get('/api/help/:token', async (c) => {
+  const db = getSupabase(c.env);
+  const token = c.req.param('token')!;
+  const campaign = await helpCampaignService.getCampaignByToken(db, token);
+  if (!campaign) return c.json({ success: false, message: 'URLが無効です' }, 404);
+  if (!campaign.isActive) return c.json({ success: false, message: 'この募集は停止されています' }, 410);
+  if (campaign.expiresAt && new Date(campaign.expiresAt).getTime() < Date.now()) {
+    return c.json({ success: false, message: '募集期間が終了しました' }, 410);
+  }
+
+  const store = await dao.getStoreById(db, campaign.storeId);
+  return c.json({
+    success: true,
+    campaign: {
+      token: campaign.id,
+      yearMonth: campaign.yearMonth,
+      title: campaign.title,
+      message: campaign.message,
+      storeName: store?.name || '',
+    },
+  });
+});
+
+// 募集の不足日・時間帯リスト（カレンダー表示用）
+app.get('/api/help/:token/shortages', async (c) => {
+  const db = getSupabase(c.env);
+  const token = c.req.param('token')!;
+  const campaign = await helpCampaignService.getCampaignByToken(db, token);
+  if (!campaign || !campaign.isActive) return c.json({ success: false, message: '募集が無効です' }, 404);
+  const shortages = await helpCampaignService.getShortagesForCampaign(db, campaign);
+  return c.json({ success: true, shortages });
+});
+
+// 応募画面用のスタッフ一覧（名前・フリガナのみ）
+app.get('/api/help/:token/staff', async (c) => {
+  const db = getSupabase(c.env);
+  const token = c.req.param('token')!;
+  const campaign = await helpCampaignService.getCampaignByToken(db, token);
+  if (!campaign || !campaign.isActive) return c.json({ success: false, message: '募集が無効です' }, 404);
+  const staff = await helpCampaignService.getPublicStaffChoices(db, campaign.storeId);
+  return c.json({ success: true, staff });
+});
+
+// 応募を送信
+app.post('/api/help/:token/apply', async (c) => {
+  const db = getSupabase(c.env);
+  const token = c.req.param('token')!;
+  const body = await c.req.json<{
+    staffId: string;
+    pin: string;
+    date: string;
+    startTime: string;
+    endTime: string;
+    note?: string;
+  }>();
+  const result = await helpCampaignService.submitApplication(db, token, body);
+  return c.json(result, result.success ? 200 : 400);
 });
 
 // ========================================
@@ -497,6 +562,69 @@ authed.post('/admin/set-password', managerOnly, async (c) => {
   const body = await c.req.json<{ password: string }>();
   await authService.setAdminPassword(db, storeId, body.password);
   return c.json({ success: true, message: 'パスワードを設定しました' });
+});
+
+// --- ヘルプ募集URL ---
+
+// 募集一覧（自店舗）
+authed.get('/admin/help-campaigns', managerOnly, async (c) => {
+  const db = getSupabase(c.env);
+  const storeId = c.get('storeId') ?? 0;
+  const list = await helpCampaignService.listCampaigns(db, storeId);
+  return c.json(list);
+});
+
+// 新規発行
+authed.post('/admin/help-campaigns', managerOnly, async (c) => {
+  const db = getSupabase(c.env);
+  const storeId = c.get('storeId') ?? 0;
+  const body = await c.req.json<{ yearMonth: string; title?: string; message?: string; expiresAt?: string | null }>();
+  const result = await helpCampaignService.createCampaign(db, storeId, {
+    ...body,
+    createdBy: c.get('name') || '管理者',
+  });
+  return c.json(result, result.success ? 200 : 400);
+});
+
+// 停止
+authed.post('/admin/help-campaigns/:id/deactivate', managerOnly, async (c) => {
+  const db = getSupabase(c.env);
+  const storeId = c.get('storeId') ?? 0;
+  const result = await helpCampaignService.deactivateCampaign(db, storeId, c.req.param('id')!, c.get('name') || '管理者');
+  return c.json(result, result.success ? 200 : 400);
+});
+
+// 応募一覧
+authed.get('/admin/help-applications', managerOnly, async (c) => {
+  const db = getSupabase(c.env);
+  const storeId = c.get('storeId') ?? 0;
+  const campaignId = c.req.query('campaignId');
+  const status = c.req.query('status');
+  const list = await helpCampaignService.listApplications(db, storeId, { campaignId, status });
+  return c.json(list);
+});
+
+// 応募の承認
+authed.post('/admin/help-applications/:id/approve', managerOnly, async (c) => {
+  const db = getSupabase(c.env);
+  const storeId = c.get('storeId') ?? 0;
+  const result = await helpCampaignService.approveApplication(db, storeId, c.req.param('id')!, c.get('name') || '管理者');
+  return c.json(result, result.success ? 200 : 400);
+});
+
+// 応募の却下
+authed.post('/admin/help-applications/:id/reject', managerOnly, async (c) => {
+  const db = getSupabase(c.env);
+  const storeId = c.get('storeId') ?? 0;
+  const body = await c.req.json<{ reason?: string }>().catch(() => ({ reason: '' }));
+  const result = await helpCampaignService.rejectApplication(
+    db,
+    storeId,
+    c.req.param('id')!,
+    c.get('name') || '管理者',
+    body.reason || ''
+  );
+  return c.json(result, result.success ? 200 : 400);
 });
 
 // --- 店舗設定 ---

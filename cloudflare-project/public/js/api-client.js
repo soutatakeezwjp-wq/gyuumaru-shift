@@ -296,5 +296,47 @@ var API = {
   // スタッフ自身: 指定月の給与明細
   getMyPayslip: function(yearMonth) {
     return this._fetch('GET', '/staff/me/payslips/' + yearMonth);
+  },
+
+  // ========================================
+  // ヘルプ募集URL（管理者用）
+  // ========================================
+
+  // 募集一覧
+  listHelpCampaigns: function() {
+    return this._fetch('GET', '/admin/help-campaigns');
+  },
+
+  // 新規募集を作成
+  createHelpCampaign: function(yearMonth, title, message, expiresAt) {
+    return this._fetch('POST', '/admin/help-campaigns', {
+      yearMonth: yearMonth,
+      title: title || 'ヘルプ募集',
+      message: message || '',
+      expiresAt: expiresAt || null
+    });
+  },
+
+  // 募集を停止
+  deactivateHelpCampaign: function(id) {
+    return this._fetch('POST', '/admin/help-campaigns/' + id + '/deactivate');
+  },
+
+  // 応募一覧
+  listHelpApplications: function(params) {
+    var q = '';
+    if (params && params.campaignId) q += (q ? '&' : '?') + 'campaignId=' + encodeURIComponent(params.campaignId);
+    if (params && params.status) q += (q ? '&' : '?') + 'status=' + encodeURIComponent(params.status);
+    return this._fetch('GET', '/admin/help-applications' + q);
+  },
+
+  // 応募を承認
+  approveHelpApplication: function(id) {
+    return this._fetch('POST', '/admin/help-applications/' + id + '/approve');
+  },
+
+  // 応募を却下
+  rejectHelpApplication: function(id, reason) {
+    return this._fetch('POST', '/admin/help-applications/' + id + '/reject', { reason: reason || '' });
   }
 };
