@@ -30,25 +30,54 @@ function getCurrentMonthStr() {
 // ========================================
 // 店舗選択画面
 // ========================================
+// 見栄え用の海外店舗ダミー（DBに無いがUIには表示する）
+// クリックされても本番DBに該当店舗が無いため、「準備中」のメッセージを出す。
+var DUMMY_OVERSEAS_STORES = [
+  { code: 'VIETNAM', name: 'ベトナム店', type: '海外', flag: '🇻🇳', _coming: true },
+  { code: 'TAIWAN',  name: '台湾店',    type: '海外', flag: '🇹🇼', _coming: true }
+];
+
 function onShow_store_select() {
   API.getStores().then(function(stores) {
     var container = document.getElementById('store-list');
-    if (stores.length === 0) {
+    // 既にダミーcodeで本物が登録されていた場合は重複させない
+    var existingCodes = {};
+    for (var k = 0; k < stores.length; k++) existingCodes[stores[k].code] = true;
+    var merged = stores.slice();
+    for (var d = 0; d < DUMMY_OVERSEAS_STORES.length; d++) {
+      if (!existingCodes[DUMMY_OVERSEAS_STORES[d].code]) merged.push(DUMMY_OVERSEAS_STORES[d]);
+    }
+
+    if (merged.length === 0) {
       container.innerHTML = '<div class="alert alert-warning">店舗が登録されていません</div>';
       return;
     }
     var html = '';
-    for (var i = 0; i < stores.length; i++) {
-      var s = stores[i];
-      html += '<div class="store-card" onclick="selectStore(\'' + esc(s.code) + '\', \'' + esc(s.name) + '\')">';
-      html += '<div class="store-card-name">' + esc(s.name) + '</div>';
-      html += '<div class="store-card-type">' + esc(s.type) + '</div>';
-      html += '</div>';
+    for (var i = 0; i < merged.length; i++) {
+      var s = merged[i];
+      var flag = s.flag ? esc(s.flag) + ' ' : '';
+      if (s._coming) {
+        // ダミー：見栄えだけのカード（クリックしたら準備中アラート）
+        html += '<div class="store-card store-card--coming" onclick="selectComingSoonStore(\'' + esc(s.name) + '\')" style="opacity:0.85;border:2px dashed #BE2828;background:linear-gradient(135deg,#FFF8E1,#FFEBEE)">';
+        html += '<div class="store-card-name">' + flag + esc(s.name) + '</div>';
+        html += '<div class="store-card-type" style="color:#BE2828;font-weight:bold">準備中（Coming Soon）</div>';
+        html += '</div>';
+      } else {
+        html += '<div class="store-card" onclick="selectStore(\'' + esc(s.code) + '\', \'' + esc(s.name) + '\')">';
+        html += '<div class="store-card-name">' + esc(s.name) + '</div>';
+        html += '<div class="store-card-type">' + esc(s.type) + '</div>';
+        html += '</div>';
+      }
     }
     container.innerHTML = html;
   }).catch(function() {
     document.getElementById('store-list').innerHTML = '<div class="alert alert-error">店舗情報の読み込みに失敗しました</div>';
   });
+}
+
+// ダミー店舗（ベトナム店・台湾店）クリック時の表示
+function selectComingSoonStore(name) {
+  alert(name + 'は近日オープン予定です。\n（多言語対応UIは準備中ですが、ヘッダーの言語切替で表示確認はできます）');
 }
 
 function selectStore(code, name) {
