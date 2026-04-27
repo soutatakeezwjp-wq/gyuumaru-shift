@@ -91,6 +91,11 @@ var App = {
       if (typeof window['onShow_' + screenId.replace(/-/g, '_')] === 'function') {
         window['onShow_' + screenId.replace(/-/g, '_')](params);
       }
+
+      // 画面切替後に翻訳を再適用（pages.jsで動的に追加された要素もカバー）
+      if (window.I18n && typeof window.I18n.applyAll === 'function') {
+        window.I18n.applyAll();
+      }
     }
 
     window.scrollTo(0, 0);

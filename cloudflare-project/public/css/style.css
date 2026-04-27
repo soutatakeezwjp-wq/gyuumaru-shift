@@ -82,6 +82,23 @@ body {
 }
 .app-header .back-btn:hover { background-color: rgba(255, 255, 255, 0.15); }
 
+/* 言語切替セレクタ（多言語対応） */
+.lang-switcher-wrap { display: flex; justify-content: flex-end; min-width: 120px; }
+.lang-switcher {
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.4);
+  background: rgba(255,255,255,0.95);
+  color: #333;
+  font-size: 12px;
+  cursor: pointer;
+  max-width: 150px;
+}
+@media (max-width: 480px) {
+  .lang-switcher { font-size: 11px; padding: 4px 6px; max-width: 110px; }
+  .lang-switcher-wrap { min-width: 100px; }
+}
+
 /* トップページのロゴ */
 .top-logo-area { text-align: center; margin-bottom: 16px; }
 .top-logo { width: 160px; height: 160px; object-fit: contain; }
