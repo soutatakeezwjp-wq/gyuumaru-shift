@@ -196,11 +196,48 @@
         <div class="hq-store-grid" id="hq-store-grid"></div>
       </div>
 
+      <!-- 店舗マスタ管理 -->
+      <div class="hq-card">
+        <h2>🏪 店舗マスタ</h2>
+        <p style="color:#666;font-size:13px;margin-bottom:12px">海外店舗（ベトナム店・台湾店）など、新しい店舗をここから追加できます。追加後は店舗選択画面に出てきます。</p>
+        <button class="hq-btn" onclick="HQ.showStoreCreateModal()">+ 店舗を追加</button>
+        <div id="hq-stores-list" style="margin-top:16px"></div>
+      </div>
+
       <!-- 管理者・店長アカウント管理 -->
       <div class="hq-card">
         <h2>👥 管理者・店長アカウント</h2>
         <button class="hq-btn" onclick="HQ.showCreateModal()">+ 新規アカウント作成</button>
         <div id="hq-managers-list" style="margin-top:16px"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 店舗追加モーダル -->
+  <div id="hq-store-modal" class="hidden" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:100;display:none;align-items:center;justify-content:center">
+    <div class="hq-card" style="max-width:480px;width:90%;margin:0">
+      <h2>新規店舗の追加</h2>
+      <div id="hq-store-error" class="hq-alert hq-alert-error hidden"></div>
+      <div class="hq-form-group">
+        <label>店舗コード（半角英数字）</label>
+        <input type="text" id="hq-store-code" placeholder="VIETNAM / TAIWAN など" style="text-transform:uppercase">
+        <p style="color:#999;font-size:11px;margin-top:4px">URL等で使う識別子です。あとから変更できないので注意してください。</p>
+      </div>
+      <div class="hq-form-group">
+        <label>店舗名</label>
+        <input type="text" id="hq-store-name" placeholder="ベトナム店 / 台湾店 など">
+      </div>
+      <div class="hq-form-group">
+        <label>店舗区分</label>
+        <select id="hq-store-type">
+          <option value="直営">直営</option>
+          <option value="フランチャイズ">フランチャイズ</option>
+          <option value="海外">海外</option>
+        </select>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:16px">
+        <button class="hq-btn" style="background:#888" onclick="HQ.hideStoreCreateModal()">キャンセル</button>
+        <button class="hq-btn" onclick="HQ.submitStore()">作成する</button>
       </div>
     </div>
   </div>
@@ -360,21 +397,92 @@
           // textContent なのでエスケープ不要
         });
 
-        // 店舗一覧（管理者作成モーダル用）
-        this._fetch('GET', '/hq/stores').then(function(stores) {
-          self.stores = stores;
-          var sel = document.getElementById('hq-new-store');
-          sel.innerHTML = '';
-          for (var i = 0; i < stores.length; i++) {
-            var opt = document.createElement('option');
-            opt.value = stores[i].id;
-            opt.textContent = stores[i].name;
-            sel.appendChild(opt);
-          }
-        });
+        // 店舗一覧（管理者作成モーダル用 + 店舗マスタ表示用）
+        this.loadStores();
 
         this.loadSummary();
         this.loadManagers();
+      },
+
+      // 店舗一覧の取得とUI反映
+      loadStores: function() {
+        var self = this;
+        return this._fetch('GET', '/hq/stores').then(function(stores) {
+          self.stores = stores || [];
+          // 管理者作成モーダル用の店舗セレクト
+          var sel = document.getElementById('hq-new-store');
+          if (sel) {
+            sel.innerHTML = '';
+            for (var i = 0; i < stores.length; i++) {
+              var opt = document.createElement('option');
+              opt.value = stores[i].id;
+              opt.textContent = stores[i].name;
+              sel.appendChild(opt);
+            }
+          }
+          // 店舗マスタの一覧表示
+          var listEl = document.getElementById('hq-stores-list');
+          if (listEl) {
+            if (!stores || stores.length === 0) {
+              listEl.innerHTML = '<p style="color:#666">まだ店舗がありません</p>';
+            } else {
+              var html = '<table class="hq-table"><tr><th>店舗コード</th><th>店舗名</th><th>区分</th></tr>';
+              for (var j = 0; j < stores.length; j++) {
+                var s = stores[j];
+                html += '<tr><td>' + esc(s.code) + '</td><td>' + esc(s.name) + '</td><td>' + esc(s.type || '-') + '</td></tr>';
+              }
+              html += '</table>';
+              listEl.innerHTML = html;
+            }
+          }
+        });
+      },
+
+      // 店舗追加モーダル
+      showStoreCreateModal: function() {
+        var modal = document.getElementById('hq-store-modal');
+        modal.style.display = 'flex';
+        modal.classList.remove('hidden');
+        document.getElementById('hq-store-code').value = '';
+        document.getElementById('hq-store-name').value = '';
+        document.getElementById('hq-store-type').value = '直営';
+        document.getElementById('hq-store-error').classList.add('hidden');
+      },
+      hideStoreCreateModal: function() {
+        var modal = document.getElementById('hq-store-modal');
+        modal.style.display = 'none';
+        modal.classList.add('hidden');
+      },
+      submitStore: function() {
+        var self = this;
+        var code = (document.getElementById('hq-store-code').value || '').trim().toUpperCase();
+        var name = (document.getElementById('hq-store-name').value || '').trim();
+        var type = document.getElementById('hq-store-type').value;
+        var err = document.getElementById('hq-store-error');
+        if (!code || !name) {
+          err.textContent = '店舗コードと店舗名は必須です';
+          err.classList.remove('hidden');
+          return;
+        }
+        if (!/^[A-Z0-9_]+$/.test(code)) {
+          err.textContent = '店舗コードは半角英数字とアンダースコアのみです';
+          err.classList.remove('hidden');
+          return;
+        }
+        this._fetch('POST', '/hq/stores', { code: code, name: name, type: type }).then(function(result) {
+          if (result && result.error) {
+            err.textContent = result.error;
+            err.classList.remove('hidden');
+            return;
+          }
+          self.hideStoreCreateModal();
+          self.loadStores();
+          self.loadSummary();
+          alert('店舗「' + name + '」を追加しました');
+        }).catch(function() {
+          err.textContent = '通信エラーが発生しました';
+          err.classList.remove('hidden');
+        });
       },
 
       loadSummary: function() {

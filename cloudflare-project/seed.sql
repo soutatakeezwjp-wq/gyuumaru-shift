@@ -1,4 +1,4 @@
--- ぎゅう丸 13店舗の初期データ
+-- ぎゅう丸 国内13店舗 + 海外2店舗（ベトナム店・台湾店）の初期データ
 
 INSERT OR IGNORE INTO stores (code, name, type) VALUES
   ('URESHINO', '嬉野本店', '直営'),
@@ -13,7 +13,9 @@ INSERT OR IGNORE INTO stores (code, name, type) VALUES
   ('OITA', '大分店', '直営'),
   ('MIYAZAKI', '宮崎店', '直営'),
   ('KAGOSHIMA', '鹿児島店', '直営'),
-  ('NAGASAKI', '長崎店', '直営');
+  ('NAGASAKI', '長崎店', '直営'),
+  ('VIETNAM', 'ベトナム店', '海外'),
+  ('TAIWAN', '台湾店', '海外');
 
 -- 各店舗のデフォルト設定を個別INSERTで投入
 -- (CROSS JOIN + UNION ALLだとD1のcompound SELECT制限に引っかかるため)

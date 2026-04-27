@@ -110,6 +110,12 @@ var API = {
     return this._fetch('GET', '/hq/stores');
   },
 
+  // 店舗を新規追加（ベトナム店・台湾店など）
+  // data: { code, name, type }
+  hqCreateStore: function(data) {
+    return this._fetch('POST', '/hq/stores', data);
+  },
+
   hqGetStoreStaff: function(storeId) {
     return this._fetch('GET', '/hq/stores/' + storeId + '/staff');
   },

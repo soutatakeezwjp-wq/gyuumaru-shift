@@ -658,6 +658,24 @@ authed.get('/hq/stores', hqOnly, async (c) => {
   return c.json(stores);
 });
 
+// 店舗を新規追加（本部管理者のみ）
+// body: { code: string, name: string, type?: string }
+authed.post('/hq/stores', hqOnly, async (c) => {
+  const db = getSupabase(c.env);
+  const body = await c.req.json<{ code: string; name: string; type?: string }>();
+  const code = (body.code || '').trim().toUpperCase();
+  const name = (body.name || '').trim();
+  const type = (body.type || '直営').trim();
+  if (!code || !name) {
+    return c.json({ error: '店舗コードと店舗名は必須です' }, 400);
+  }
+  if (!/^[A-Z0-9_]+$/.test(code)) {
+    return c.json({ error: '店舗コードは半角英数字とアンダースコアのみで指定してください' }, 400);
+  }
+  const store = await dao.createStore(db, code, name, type);
+  return c.json(store);
+});
+
 // 特定店舗のスタッフ一覧を取得（本部管理者用）
 authed.get('/hq/stores/:storeId/staff', hqOnly, async (c) => {
   const db = getSupabase(c.env);

@@ -81,6 +81,46 @@ export async function getAllStores(db: DB): Promise<StoreRow[]> {
   return (data ?? []) as StoreRow[];
 }
 
+// 店舗を新規作成（codeが既に存在する場合は既存を返す）。
+// 作成と同時にデフォルト設定（営業時間など）も投入する。
+export async function createStore(
+  db: DB,
+  code: string,
+  name: string,
+  type: string = '直営',
+): Promise<StoreRow> {
+  const existing = await getStoreByCode(db, code);
+  if (existing) return existing;
+
+  const { data, error } = await db
+    .from('stores')
+    .insert({ code, name, type })
+    .select('id, code, name, type')
+    .single();
+  if (error) throw error;
+
+  const row = data as StoreRow;
+
+  // 作成直後に最低限のデフォルト設定を流し込む（既存の他店舗と同等のキー）
+  const defaults: Array<{ key: string; value: string }> = [
+    { key: '店舗名', value: name },
+    { key: '店舗コード', value: code },
+    { key: '店舗区分', value: type },
+    { key: '営業開始', value: '11:00' },
+    { key: '営業終了', value: '22:00' },
+    { key: '平日_ホール最低人数', value: '2' },
+    { key: '平日_キッチン最低人数', value: '2' },
+    { key: '土日_ホール最低人数', value: '3' },
+    { key: '土日_キッチン最低人数', value: '3' },
+    { key: 'シフト希望締切日', value: '20' },
+  ];
+  const rows = defaults.map((d) => ({ store_id: row.id, key: d.key, value: d.value }));
+  const { error: e2 } = await db.from('store_settings').upsert(rows, { onConflict: 'store_id,key' });
+  if (e2) throw e2;
+
+  return row;
+}
+
 // ========================================
 // スタッフ
 // ========================================
