@@ -513,7 +513,10 @@ body {
 .gantt-name-cell .emp-badge.parttime { background: #E3F2FD; color: #1565C0; border: 1px solid #90CAF9; }
 .gantt-row { height: 32px; }
 .gantt-cell { position: relative; height: 32px; min-width: 28px; cursor: default; }
-.gantt-bar { position: absolute; top: 3px; height: 26px; border-radius: 4px; font-size: 9px; color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; min-width: 20px; z-index: 1; user-select: none; }
+.gantt-bar { position: absolute; top: 3px; height: 26px; border-radius: 4px; font-size: 9px; color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; min-width: 20px; z-index: 1; user-select: none; transition: box-shadow 0.15s ease; }
+/* ドラッグ中はトランジションを無効化してマウス追従を最優先（カクつき防止） */
+.gantt-bar.dragging { transition: none !important; box-shadow: 0 4px 14px rgba(0,0,0,0.35); z-index: 10; opacity: 0.95; cursor: col-resize; }
+.gantt-bar.dragging * { pointer-events: none; }
 .gantt-bar.hall { background: #43A047; }
 .gantt-bar.kitchen { background: #1E88E5; }
 .gantt-bar:hover { opacity: 0.85; box-shadow: 0 2px 6px rgba(0,0,0,0.3); }

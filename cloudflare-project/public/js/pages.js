@@ -1833,7 +1833,11 @@ var AdminShiftEdit = {
   },
 
   // ガントバーのドラッグ操作（30分刻みで調整）
+  // - ドラッグ中はバー要素を直接動かして60fpsで追従させる（requestAnimationFrameでスロットリング）
+  // - ドロップ時はローカルstateを楽観更新→バックグラウンドAPI送信→失敗時のみロールバック
+  // - 全画面再ロード(load())を廃止。該当ビューのみ部分再描画する。
   _dragState: null,
+  _dragJustFinished: false,
   startGanttDrag: function(e, shiftId, side) {
     e.preventDefault(); e.stopPropagation();
     var shift = null;
@@ -1842,46 +1846,120 @@ var AdminShiftEdit = {
     }
     if (!shift) return;
 
-    this._dragState = { shiftId: shiftId, side: side, startX: e.clientX, origStart: shift.startTime, origEnd: shift.endTime };
+    // バー要素とそのセル幅（30分=1コマ）を実測
+    var handleEl = e.target;
+    var barEl = handleEl.closest ? handleEl.closest('.gantt-bar') : null;
+    if (!barEl) {
+      // closest非対応環境用フォールバック
+      barEl = handleEl;
+      while (barEl && !(barEl.classList && barEl.classList.contains('gantt-bar'))) barEl = barEl.parentNode;
+    }
+    if (!barEl) return;
+
+    // 同じ行の最初の .gantt-cell からセル幅を実測（CSSの28px固定と一致するはずだが念のため）
+    var cellEl = barEl.parentNode;
+    while (cellEl && !(cellEl.classList && cellEl.classList.contains('gantt-cell'))) cellEl = cellEl.parentNode;
+    var cellWidth = cellEl ? cellEl.getBoundingClientRect().width : 28;
+    if (!cellWidth || cellWidth < 4) cellWidth = 28;
+
+    // ドラッグ前の見た目を記録（pxで保持し、ドラッグ中は直接書き換える）
+    var initialBarRect = barEl.getBoundingClientRect();
+    var initialCellRect = cellEl ? cellEl.getBoundingClientRect() : initialBarRect;
+    var initialLeftPx = initialBarRect.left - initialCellRect.left;
+    var initialWidthPx = initialBarRect.width;
+
+    // GPU合成のヒント
+    barEl.style.willChange = 'left, width';
+    barEl.classList.add('dragging');
+
+    this._dragState = {
+      shiftId: shiftId, side: side,
+      startX: e.clientX,
+      origStart: shift.startTime, origEnd: shift.endTime,
+      newStart: shift.startTime, newEnd: shift.endTime,
+      barEl: barEl, cellWidth: cellWidth,
+      initialLeftPx: initialLeftPx, initialWidthPx: initialWidthPx,
+      lastClientX: e.clientX,
+      rafId: null
+    };
+
     var self = this;
-    var onMove = function(ev) { self._onGanttDrag(ev); };
+    var onMove = function(ev) {
+      ev.preventDefault();
+      if (!self._dragState) return;
+      self._dragState.lastClientX = ev.clientX;
+      // requestAnimationFrameで間引き（マウス座標は連続的に来るがDOM更新は1フレーム1回）
+      if (self._dragState.rafId) return;
+      self._dragState.rafId = requestAnimationFrame(function() {
+        if (!self._dragState) return;
+        self._dragState.rafId = null;
+        self._onGanttDrag(self._dragState.lastClientX);
+      });
+    };
     var onUp = function(ev) {
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
+      if (self._dragState && self._dragState.rafId) {
+        cancelAnimationFrame(self._dragState.rafId);
+      }
+      // 後始末
+      if (self._dragState) {
+        var st = self._dragState;
+        if (st.barEl) {
+          st.barEl.style.willChange = '';
+          st.barEl.classList.remove('dragging');
+        }
+      }
       self._finishGanttDrag();
     };
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
   },
 
-  _onGanttDrag: function(e) {
-    if (!this._dragState) return;
-    var dx = e.clientX - this._dragState.startX;
-    // 1セル幅を約28pxと想定、30分単位
-    var slotDelta = Math.round(dx / 28);
+  _onGanttDrag: function(clientX) {
+    var state = this._dragState;
+    if (!state) return;
+    var dx = clientX - state.startX;
+    var slotDelta = Math.round(dx / state.cellWidth);
     var minutesDelta = slotDelta * 30;
 
-    var origStartMin = parseInt(this._dragState.origStart.split(':')[0]) * 60 + parseInt(this._dragState.origStart.split(':')[1]);
-    var origEndMin = parseInt(this._dragState.origEnd.split(':')[0]) * 60 + parseInt(this._dragState.origEnd.split(':')[1]);
+    var origStartMin = parseInt(state.origStart.split(':')[0]) * 60 + parseInt(state.origStart.split(':')[1]);
+    var origEndMin = parseInt(state.origEnd.split(':')[0]) * 60 + parseInt(state.origEnd.split(':')[1]);
 
-    if (this._dragState.side === 'left') {
-      var newStart = Math.max(360, Math.min(origStartMin + minutesDelta, origEndMin - 30)); // 6:00以降、終了の30分前まで
-      this._dragState.newStart = ('0' + Math.floor(newStart / 60)).slice(-2) + ':' + ('0' + (newStart % 60)).slice(-2);
-      this._dragState.newEnd = this._dragState.origEnd;
+    var newStartMin = origStartMin;
+    var newEndMin = origEndMin;
+    if (state.side === 'left') {
+      newStartMin = Math.max(360, Math.min(origStartMin + minutesDelta, origEndMin - 30));
     } else {
-      var newEnd = Math.min(1440, Math.max(origEndMin + minutesDelta, origStartMin + 30)); // 24:00まで、開始の30分後以降
-      this._dragState.newStart = this._dragState.origStart;
-      this._dragState.newEnd = ('0' + Math.floor(newEnd / 60)).slice(-2) + ':' + ('0' + (newEnd % 60)).slice(-2);
+      newEndMin = Math.min(1440, Math.max(origEndMin + minutesDelta, origStartMin + 30));
+    }
+
+    state.newStart = ('0' + Math.floor(newStartMin / 60)).slice(-2) + ':' + ('0' + (newStartMin % 60)).slice(-2);
+    state.newEnd = ('0' + Math.floor(newEndMin / 60)).slice(-2) + ':' + ('0' + (newEndMin % 60)).slice(-2);
+
+    // バーを実際に動かす（pxで直接書き換え。CSS calc()よりも軽い）
+    if (state.barEl) {
+      var leftDeltaSlots = (newStartMin - origStartMin) / 30; // 左ハンドルなら変化、右ハンドルなら0
+      var widthDeltaSlots = (newEndMin - origEndMin) / 30 - leftDeltaSlots;
+      var newLeftPx = state.initialLeftPx + leftDeltaSlots * state.cellWidth;
+      var newWidthPx = state.initialWidthPx + widthDeltaSlots * state.cellWidth;
+      // 右ハンドルの場合は left は変えない、widthのみ
+      if (state.side === 'right') {
+        state.barEl.style.width = (state.initialWidthPx + ((newEndMin - origEndMin) / 30) * state.cellWidth) + 'px';
+      } else {
+        state.barEl.style.left = newLeftPx + 'px';
+        state.barEl.style.width = (state.initialWidthPx + ((origStartMin - newStartMin) / 30) * state.cellWidth) + 'px';
+      }
+      // ツールチップに新時刻を反映（マウスホバー時にすぐ確認できる）
+      state.barEl.setAttribute('title', state.newStart + '-' + state.newEnd);
     }
   },
 
-  _dragJustFinished: false,
-
   _finishGanttDrag: function() {
-    if (!this._dragState || !this._dragState.newStart) { this._dragState = null; return; }
+    if (!this._dragState) return;
     var state = this._dragState; this._dragState = null;
 
-    // 変化がなければスキップ
+    // 変化がなければそのまま終了
     if (state.newStart === state.origStart && state.newEnd === state.origEnd) return;
 
     // ドラッグ直後のクリックでモーダルが開かないようフラグ設定
@@ -1889,14 +1967,55 @@ var AdminShiftEdit = {
     var self = this;
     setTimeout(function() { self._dragJustFinished = false; }, 300);
 
-    App.showLoading('更新中...');
+    // 楽観的更新：ローカルschedulesを即座に書き換え
+    var target = null;
+    for (var i = 0; i < this.schedules.length; i++) {
+      if (this.schedules[i].id === state.shiftId) { target = this.schedules[i]; break; }
+    }
+    if (target) {
+      target.startTime = state.newStart;
+      target.endTime = state.newEnd;
+    }
+
+    // 該当ビューのみ部分再描画（API再取得しない＝重い処理は走らない）
+    // どちらのビューが現在描画されているかは selectedDay の有無では判定できないため、
+    // ガント関連の描画関数を持っていればそれを呼ぶ。週ビューが基本。
+    if (typeof this.renderGanttWeekView === 'function' && document.querySelector('.gantt-table')) {
+      // 日ビューが描画されているなら日ビュー、そうでなければ週ビュー
+      // ガントテーブル内に「日付列」があれば週ビュー、なければ日ビュー
+      var hasDateHeader = document.querySelector('.gantt-table th[data-date]');
+      if (hasDateHeader) {
+        this.renderGanttWeekView();
+      } else if (typeof this.renderGanttDayView === 'function') {
+        this.renderGanttDayView();
+      } else {
+        this.renderGanttWeekView();
+      }
+    }
+    if (typeof this.renderStaffHours === 'function') {
+      this.renderStaffHours();
+    }
+
+    // 控えめに進行中トーストを出す（loading overlayは出さない）
+    App.showToast(state.newStart + '-' + state.newEnd + ' に変更', 'info');
+
+    // バックグラウンドAPI送信
     API.updateShiftEntry(state.shiftId, { startTime: state.newStart, endTime: state.newEnd }).then(function(result) {
-      App.hideLoading();
-      if (result.success) {
-        App.showToast(state.origStart + '-' + state.origEnd + ' → ' + state.newStart + '-' + state.newEnd, 'success');
-        self.load();
-      } else { App.showToast(result.message, 'error'); }
-    }).catch(function() { App.hideLoading(); App.showToast('更新に失敗しました', 'error'); });
+      if (result && result.success) {
+        // 成功時は何も追加表示しない（既に画面は反映済み）
+      } else {
+        // ロールバック
+        if (target) { target.startTime = state.origStart; target.endTime = state.origEnd; }
+        if (typeof self.renderGanttWeekView === 'function') self.renderGanttWeekView();
+        if (typeof self.renderStaffHours === 'function') self.renderStaffHours();
+        App.showToast((result && result.message) || '更新できませんでした（元に戻しました）', 'error');
+      }
+    }).catch(function() {
+      if (target) { target.startTime = state.origStart; target.endTime = state.origEnd; }
+      if (typeof self.renderGanttWeekView === 'function') self.renderGanttWeekView();
+      if (typeof self.renderStaffHours === 'function') self.renderStaffHours();
+      App.showToast('通信エラーで更新できませんでした（元に戻しました）', 'error');
+    });
   },
 
   // ガント週表示
